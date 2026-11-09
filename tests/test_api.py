@@ -79,6 +79,17 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 502)
         self.assertIsNone((await self.client.get("/api/briefings/latest")).json()["briefing"])
 
+    async def test_unavailable_investigation_does_not_break_ranking(self):
+        settings_file = Path(self.folder.name) / "invalid-investigation.json"
+        settings_file.write_text('{"provider":"unknown"}')
+        self.app.state.news.investigation_file = settings_file
+        response = await self.refresh(mode="sample")
+        self.assertEqual(response.status_code, 200)
+        briefing = response.json()["briefing"]
+        self.assertEqual(briefing["investigation"]["status"], "unavailable")
+        self.assertEqual(len(briefing["stories"]), 2)
+        self.assertTrue(all(story["score"] > 0 for story in briefing["stories"]))
+
     async def test_live_refresh_serves_cached_reads_and_history(self):
         response = await self.refresh()
         self.assertEqual(response.status_code, 200)
@@ -91,6 +102,12 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.calls, 1)
         self.assertNotIn("private-test-key", json.dumps(latest))
         self.assertNotIn("private-test-key", self.database.read_bytes().decode(errors="ignore"))
+        self.assertEqual(latest["briefing"]["investigation"]["llm_calls"], 0)
+        story = latest["briefing"]["candidates"][0]
+        self.assertTrue(story["summary"]["citations"])
+        self.assertTrue(story["investigation"]["activity"])
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM investigations").fetchone()[0], 2)
 
     async def test_failed_live_source_keeps_previous_briefing(self):
         first = (await self.refresh()).json()["briefing"]

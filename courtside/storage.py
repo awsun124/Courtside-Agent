@@ -67,6 +67,15 @@ CREATE TABLE IF NOT EXISTS refresh_attempts (
     briefing_id INTEGER REFERENCES briefings(id),
     error TEXT
 );
+CREATE TABLE IF NOT EXISTS investigations (
+    briefing_id INTEGER NOT NULL,
+    story_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    status TEXT NOT NULL,
+    investigation_json TEXT NOT NULL,
+    FOREIGN KEY (briefing_id, story_id) REFERENCES story_scores(briefing_id, story_id),
+    PRIMARY KEY (briefing_id, story_id)
+);
 """
 
 
@@ -111,6 +120,11 @@ def save_briefing(briefing, database):
             for story in briefing["candidates"]:
                 connection.execute("INSERT INTO story_scores VALUES (?, ?, ?, ?, ?, ?)",
                                    (briefing_id, story["id"], story["rank"], story["score"], story["eligible"], json.dumps(story)))
+                if story.get("investigation"):
+                    investigation = story["investigation"]
+                    connection.execute("INSERT INTO investigations VALUES (?, ?, ?, ?, ?)",
+                                       (briefing_id, story["id"], investigation.get("provider", "unavailable"),
+                                        investigation["status"], json.dumps(investigation)))
     return briefing_id
 
 

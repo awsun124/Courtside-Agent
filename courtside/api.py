@@ -21,11 +21,11 @@ class RefreshRequest(BaseModel):
     max_requests: int = Field(default=3, ge=1, le=5)
 
 
-def create_app(database=None, env_file=None, settings_file=None, collector=None, clock=None):
+def create_app(database=None, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None):
     @asynccontextmanager
     async def lifespan(app):
         app.state.news = NewsService(database or PROJECT_ROOT / "artifacts/courtside.db",
-                                     env_file, settings_file, collector, clock)
+                                     env_file, settings_file, collector, clock, investigation_file)
         yield
 
     app = FastAPI(title="Court Side", version="0.1.0", lifespan=lifespan)

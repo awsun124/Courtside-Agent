@@ -7,6 +7,7 @@ from pathlib import Path
 from scripts.validate_gnews import collect_articles, load_api_key, SourceError
 from .ranking import RankingSettings, rank_stories
 from .sample_data import sample_report
+from .investigate import add_investigations
 from .stories import process_report, parse_date
 from .storage import (finish_refresh, initialize_database, read_briefings, read_refreshes,
                       read_run, save_briefing, save_run, start_refresh)
@@ -22,12 +23,13 @@ class RefreshError(Exception):
 
 
 class NewsService:
-    def __init__(self, database, env_file=None, settings_file=None, collector=None, clock=None):
+    def __init__(self, database, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None):
         self.database = Path(database)
         self.env_file = Path(env_file or PROJECT_ROOT / ".env")
         self.settings_file = Path(settings_file or PROJECT_ROOT / "config/ranking.json")
         self.collector = collector or collect_articles
         self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.investigation_file = investigation_file
         initialize_database(self.database)
 
     def latest(self, mode):
@@ -63,7 +65,7 @@ class NewsService:
 
     def refresh(self, mode, days, max_requests):
         now = self.clock().replace(microsecond=0)
-        job = start_refresh(self.database, mode, now, max_requests if mode == "live" else 0)
+        job = start_refresh(self.database, mode, now, max_requests if mode == "live" else 0, max_seconds=120)
         if "error" in job:
             raise RefreshError(job["status_code"], job["error"], job["retry_after"])
         used, api_key = 0, None
@@ -93,6 +95,8 @@ class NewsService:
                 raise RefreshError(502, "The source returned an unexpected data mode. The previous briefing is unchanged.")
             result = process_report(report)
             briefing = rank_stories(result, settings)
+            previous = read_briefings(self.database, mode, limit=3)
+            briefing = add_investigations(result, briefing, previous, self.investigation_file, self.env_file)
             briefing["source_errors"] = [attempt["error"] for attempt in report["attempts"] if attempt["status"] == "failed"]
             if api_key:
                 briefing["source_errors"] = [error.replace(api_key, "[REDACTED]") for error in briefing["source_errors"]]

@@ -1,0 +1,11 @@
+{
+  "provider": "rules",
+  "max_stories": 10,
+  "max_steps": 80,
+  "max_steps_per_story": 8,
+  "max_seconds": 15,
+  "max_articles_per_story": 6,
+  "max_llm_calls": 3,
+  "max_input_characters": 16000,
+  "max_output_tokens": 1000
+}

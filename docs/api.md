@@ -33,7 +33,8 @@ are different states.
 Days can be 1 through 7. The request limit can be 1 through 5, with a default of
 3. Collection has a 90-second overall limit and 30 seconds per source request.
 Requests are synchronous, so clients should keep their loading state until the
-response arrives. Saved briefings remain readable during collection.
+response arrives. The investigation has a separate default 15-second limit after
+collection. Saved briefings remain readable throughout the refresh.
 
 The server reads the key from its environment or local `.env` file. Clients do
 not submit a key. Unknown request fields are rejected. Collector errors and
@@ -88,7 +89,9 @@ The API defaults to `artifacts/courtside.db`. It has no startup collection and
 no automatic refresh. CORS permits the local frontend at port 5173. Run it on
 localhost for development. Public hosting and authentication are later work.
 
-There is no AI investigator or generated summary yet. Freshness remains zero
+The bounded investigator adds cited source excerpts, uncertainty, activity, and
+previous-briefing comparisons. Its default provider is rules, not an LLM. An
+unavailable investigation does not remove the deterministic scores. Freshness remains zero
 without a reviewed development. The small live sample can still produce zero
 eligible stories, and the API keeps that result honest. The dashboard should
 show the warnings and candidate evidence rather than inventing ten stories.

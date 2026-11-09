@@ -3,7 +3,7 @@
 Court Side is an NBA news app in progress. This repository contains collection
 scripts, story processing, ranking, and a local FastAPI backend.
 The backend serves saved briefings and supports manual refreshes.
-The dashboard and AI investigation loop come next.
+The dashboard comes next. A bounded investigation loop can already inspect saved evidence.
 
 ## Setup
 
@@ -172,6 +172,23 @@ See [ranking methodology](docs/ranking.md) for formulas and limitations.
 
 Confirm the news provider's plan and content permissions before publishing the
 app or adding AI summaries. GNews free access is for noncommercial use.
+
+## Investigate stories
+
+Refreshes now investigate each candidate using read-only tools for saved articles,
+related stories, and previous briefings. The default rules provider makes no LLM
+calls. It produces attributed API excerpts with citations and leaves scores alone.
+
+```sh
+python -m courtside.investigate
+python -m courtside.investigate --mode sample
+```
+
+The report is saved under `artifacts/investigation/`. API refreshes also store
+activity in SQLite. Limits live in `config/investigation.json`. Unclear evidence,
+rumors, limited corroboration, and unfinished investigations stay labeled.
+The optional LLM adapter is disabled by default and has only been tested with
+mocked responses. See [investigation notes](docs/investigation.md) before enabling it.
 
 - [GNews search](https://docs.gnews.io/endpoints/search-endpoint)
 - [GNews authentication](https://docs.gnews.io/authentication)
