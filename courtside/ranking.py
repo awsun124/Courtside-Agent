@@ -162,6 +162,9 @@ def score_story(story, article_index, window_start, window_end, as_of, settings)
 
 
 def rank_stories(result, settings=None):
+    mode = result.get("mode", "live")
+    if mode not in {"live", "sample"}:
+        raise ValueError("Data mode must be live or sample")
     settings = settings or RankingSettings()
     settings.validate()
     start, end = parse_date(result["window_start"]), parse_date(result["window_end"])
@@ -190,6 +193,8 @@ def rank_stories(result, settings=None):
     for rank, story in enumerate(selected, 1):
         story["rank"] = rank
     warnings = []
+    if mode == "sample":
+        warnings.append("Sample data is fictional and is only for trying the app.")
     if not result.get("input_complete"):
         warnings.append("The article collection is incomplete. Scores describe only the downloaded sample.")
     if result.get("freshness_delay_hours", 0):
@@ -202,7 +207,8 @@ def rank_stories(result, settings=None):
         warnings.append("The available window is too short to measure momentum with these settings.")
     if any(story["breakdown"]["freshness"]["status"] == "no reviewed development" for story in candidates):
         warnings.append("Some stories have no reviewed development. Their freshness score is zero.")
-    return dict(title="Most-covered stories among our monitored sources", experimental=bool(warnings),
+    return dict(title="Sample briefing (fictional data)" if mode == "sample" else "Most-covered stories among our monitored sources",
+                data_mode=mode, source=result.get("source", "GNews"), experimental=bool(warnings),
                 warnings=warnings, as_of=as_of.isoformat(), window_start=start.isoformat(), window_end=end.isoformat(),
                 processing_run_id=result.get("run_id"), settings=asdict(settings),
                 stories=selected, candidates=candidates)

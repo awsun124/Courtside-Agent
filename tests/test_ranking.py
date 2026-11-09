@@ -1,4 +1,5 @@
 """Check ranking scores, evidence requirements, and saved briefing history."""
+from contextlib import closing
 from copy import deepcopy
 import math
 from pathlib import Path
@@ -173,7 +174,7 @@ class RankingTests(unittest.TestCase):
             database = Path(folder) / "courtside.db"
             save_briefing(ranked, database)
             save_briefing(ranked, database)
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection:
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM briefings").fetchone()[0], 2)
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM story_scores").fetchone()[0], 2)
                 self.assertIn('"coverage_weight": 0.5', connection.execute("SELECT briefing_json FROM briefings LIMIT 1").fetchone()[0])
@@ -181,7 +182,7 @@ class RankingTests(unittest.TestCase):
             broken["candidates"].append(broken["candidates"][0])
             with self.assertRaises(sqlite3.IntegrityError):
                 save_briefing(broken, database)
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection:
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM briefings").fetchone()[0], 2)
 
 

@@ -3,6 +3,10 @@ import json
 from contextlib import closing
 from pathlib import Path
 import sqlite3
+from datetime import timedelta
+
+from scripts.validate_gdelt import format_time
+from .stories import parse_date
 
 
 SCHEMA = """
@@ -52,6 +56,17 @@ CREATE TABLE IF NOT EXISTS story_scores (
     score_json TEXT NOT NULL,
     PRIMARY KEY (briefing_id, story_id)
 );
+CREATE TABLE IF NOT EXISTS refresh_attempts (
+    id INTEGER PRIMARY KEY,
+    mode TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    lease_until TEXT NOT NULL,
+    completed_at TEXT,
+    status TEXT NOT NULL,
+    requests_used INTEGER NOT NULL,
+    briefing_id INTEGER REFERENCES briefings(id),
+    error TEXT
+);
 """
 
 
@@ -97,3 +112,67 @@ def save_briefing(briefing, database):
                 connection.execute("INSERT INTO story_scores VALUES (?, ?, ?, ?, ?, ?)",
                                    (briefing_id, story["id"], story["rank"], story["score"], story["eligible"], json.dumps(story)))
     return briefing_id
+
+
+def initialize_database(database):
+    database = Path(database)
+    database.parent.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(database)) as connection:
+        connection.executescript(SCHEMA)
+
+
+def read_briefings(database, mode, limit=10, briefing_id=None):
+    query = "SELECT id, briefing_json FROM briefings WHERE COALESCE(json_extract(briefing_json, '$.data_mode'), 'live') = ?"
+    params = [mode]
+    if briefing_id is not None:
+        query += " AND id = ?"
+        params.append(briefing_id)
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    with closing(sqlite3.connect(database)) as connection:
+        rows = connection.execute(query, params).fetchall()
+    return [{**json.loads(payload), "briefing_id": saved_id, "data_mode": mode} for saved_id, payload in rows]
+
+
+def read_run(database, run_id):
+    with closing(sqlite3.connect(database)) as connection:
+        row = connection.execute("SELECT result_json FROM processing_runs WHERE id = ?", (run_id,)).fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def read_refreshes(database, mode, limit=1):
+    with closing(sqlite3.connect(database)) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute("SELECT * FROM refresh_attempts WHERE mode = ? ORDER BY id DESC LIMIT ?", (mode, limit)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def start_refresh(database, mode, now, requests, max_seconds=90):
+    timestamp = format_time(now)
+    with closing(sqlite3.connect(database)) as connection, connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("UPDATE refresh_attempts SET status='failed', completed_at=?, error='Previous refresh was interrupted' WHERE status='running' AND lease_until <= ?", (timestamp, timestamp))
+        if connection.execute("SELECT id FROM refresh_attempts WHERE status='running'").fetchone():
+            return dict(status_code=409, error="A refresh is already running", retry_after=5)
+        if mode == "live":
+            last = connection.execute("SELECT started_at FROM refresh_attempts WHERE mode='live' AND requests_used > 0 ORDER BY id DESC LIMIT 1").fetchone()
+            if last:
+                remaining = 60 - (now - parse_date(last[0])).total_seconds()
+                if remaining > 0:
+                    return dict(status_code=429, error="Wait a minute between live refreshes", retry_after=max(1, int(remaining) + 1))
+            today = format_time(now.replace(hour=0, minute=0, second=0, microsecond=0))
+            used = connection.execute("SELECT COALESCE(SUM(requests_used), 0) FROM refresh_attempts WHERE mode='live' AND started_at >= ?", (today,)).fetchone()[0]
+            if used + requests > 30:
+                next_day = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+                return dict(status_code=429, error="This app's daily limit of 30 source requests has been reached",
+                            retry_after=max(1, int((next_day - now).total_seconds()) + 1))
+        refresh_id = connection.execute(
+            "INSERT INTO refresh_attempts (mode, started_at, lease_until, status, requests_used) VALUES (?, ?, ?, 'running', ?)",
+            (mode, timestamp, format_time(now + timedelta(seconds=max_seconds + 15)), requests)).lastrowid
+    return dict(id=refresh_id)
+
+
+def finish_refresh(database, refresh_id, now, status, requests_used, briefing_id=None, error=None):
+    with closing(sqlite3.connect(database)) as connection, connection:
+        connection.execute("UPDATE refresh_attempts SET completed_at=?, status=?, requests_used=?, briefing_id=?, error=? WHERE id=?",
+                           (format_time(now), status, requests_used, briefing_id, error, refresh_id))

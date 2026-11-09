@@ -168,8 +168,10 @@ def group_articles(articles):
 
 
 def process_report(report):
-    if report.get("provider") != "GNews" or report.get("mode") != "live" or not isinstance(report.get("articles"), list):
-        raise ValueError("Expected a saved live GNews report")
+    mode = report.get("mode")
+    provider = "Sample" if mode == "sample" else "GNews"
+    if mode not in {"live", "sample"} or report.get("provider") != provider or not isinstance(report.get("articles"), list):
+        raise ValueError("Expected a GNews report or explicitly labeled sample data")
     start = parse_date(report["requested_start"])
     end = parse_date(report["searchable_end"])
     if start >= end:
@@ -199,7 +201,7 @@ def process_report(report):
         except (KeyError, ValueError, TypeError) as error:
             skipped.append(dict(reason=str(error)))
     included = [article for article in articles.values() if article["decision"] == "included"]
-    return dict(source="GNews", input_complete=bool(report.get("complete_available_results")),
+    return dict(source=provider, mode=mode, input_complete=bool(report.get("complete_available_results")),
                 window_start=report["requested_start"], window_end=report["searchable_end"],
                 freshness_delay_hours=report.get("freshness_delay_hours", 12),
                 collected_at=report["generated_at"], articles=list(articles.values()),
@@ -210,7 +212,8 @@ def process_report(report):
 def write_report(result, output):
     output.mkdir(parents=True, exist_ok=True)
     (output / "stories.json").write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
-    lines = ["# Courtside-Agent story groups", "", "Based on saved live GNews results. No new API requests.",
+    source_note = "Fictional sample data." if result.get("mode") == "sample" else "Based on saved live GNews results."
+    lines = ["# Courtside-Agent story groups", "", source_note + " No new API requests.",
              f"Available window: {result['window_start']} to {result['window_end']}",
              f"Original collection complete: {result['input_complete']}",
              f"Decisions: {result['decisions']}", "",

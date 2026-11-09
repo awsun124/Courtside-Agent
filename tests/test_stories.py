@@ -1,4 +1,5 @@
 """Check article filtering, event grouping, and SQLite history."""
+from contextlib import closing
 from copy import deepcopy
 from pathlib import Path
 import sqlite3
@@ -122,7 +123,7 @@ class StoryTests(unittest.TestCase):
             database = Path(folder) / "courtside.db"
             save_run(result, database)
             save_run(result, database)
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection:
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM articles").fetchone()[0], 1)
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM processing_runs").fetchone()[0], 2)
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM story_clusters").fetchone()[0], 2)
@@ -132,7 +133,7 @@ class StoryTests(unittest.TestCase):
             broken["stories"][0]["article_urls"] = ["https://missing.com/article"]
             with self.assertRaises(KeyError):
                 save_run(broken, database)
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection:
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM processing_runs").fetchone()[0], 2)
 
 

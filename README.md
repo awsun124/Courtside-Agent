@@ -1,11 +1,20 @@
 # Courtside-Agent
 
-Court Side is an NBA news app in progress. This repository currently contains
-scripts for checking news sources. The backend and dashboard come next.
+Court Side is an NBA news app in progress. This repository contains collection
+scripts, story processing, ranking, and a local FastAPI backend.
+The backend serves saved briefings and supports manual refreshes.
+The dashboard and AI investigation loop come next.
 
 ## Setup
 
-You need Python 3.11+ and curl. No Python packages are required yet.
+You need Python 3.11+ and curl. The collection scripts use the standard library.
+Install the API and test dependencies in a virtual environment:
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
 
 Create a free [GNews account](https://gnews.io/), verify your email, and add the
 key to a local `.env` file using [.env.example](.env.example) as a template:
@@ -71,11 +80,44 @@ domains do not necessarily represent independent publishers.
 ## Run tests
 
 ```sh
-python3 -m unittest discover -s tests -v
+python -m unittest discover -s tests -v
 ```
 
 Tests run offline. They cover article dates, duplicate URLs and headlines,
 publisher details, request limits, errors, and private key handling.
+
+## Start the API
+
+With the virtual environment active:
+
+```sh
+python -m uvicorn courtside.api:app --host 127.0.0.1 --port 8000
+```
+
+Open [the API docs](http://127.0.0.1:8000/docs) to try the endpoints. Reads use
+SQLite without calling a news source. A fresh database returns an explicit empty
+state. Existing CLI briefings are available automatically.
+
+Try sample mode without a key:
+
+```sh
+curl -X POST http://127.0.0.1:8000/api/refresh \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"sample","days":3}'
+curl 'http://127.0.0.1:8000/api/briefings/latest?mode=sample'
+```
+
+Sample stories are fictional and stay separate from live briefings. Live mode
+is the default and needs `GNEWS_API_KEY` on the server. A failed live refresh
+never falls back to sample data. Use `{"mode":"live","days":3,"max_requests":3}`
+for a bounded live refresh. The API permits one refresh at a time, waits at least
+a minute between live refresh starts, and limits itself to 30 source requests
+per UTC day. Those counts do not include standalone collection scripts.
+
+The response includes incomplete-source warnings, source delay, the last
+successful collection time, the latest refresh attempt, and a stale flag after
+six hours. Failed refreshes keep the previous briefing. See [API notes](docs/api.md)
+for routes, limits, and the current scope.
 
 ## Filter and group saved articles
 
