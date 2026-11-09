@@ -55,6 +55,19 @@ export interface Story {
   }
 }
 
+export interface CollectionSource {
+  id: string
+  name: string
+  kind: string
+  status: string
+  article_count: number
+  collected_at: string | null
+  delay_hours?: number
+  note?: string
+  error?: string
+  rejected_records?: number
+}
+
 export interface Briefing {
   briefing_id: number
   title: string
@@ -65,6 +78,7 @@ export interface Briefing {
   window_end: string
   experimental: boolean
   warnings: string[]
+  sources?: CollectionSource[]
   source_errors?: string[]
   settings: { coverage_weight: number; momentum_weight: number; freshness_weight: number; minimum_publishers: number }
   stories: Story[]
@@ -115,6 +129,7 @@ export interface SourceArticle {
   collected_at: string
   description?: string | null
   content_excerpt?: string | null
+  attribution_note?: string
 }
 
 export interface StoryDetail {

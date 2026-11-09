@@ -220,4 +220,33 @@ describe('Court Side dashboard', () => {
     finish(json(makeLatest()))
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Refreshing…' })).toBeNull())
   })
+  it('shows individual source failures without hiding the saved news', async () => {
+    const latest = makeLatest()
+    latest.briefing!.sources = [
+      { id: 'gnews', name: 'GNews', kind: 'api', status: 'failed', article_count: 0, collected_at: null, error: 'GNews unavailable' },
+      { id: 'yahoo-nba', name: 'Yahoo Sports', kind: 'rss', status: 'ok', article_count: 12, collected_at: '2026-11-09T12:00:00Z', note: 'Recent feed snapshot only.' },
+    ]
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    await userEvent.click(screen.getByText('Collection sources'))
+    expect(screen.getByText('GNews unavailable')).toBeTruthy()
+    expect(screen.getByText('ok · 12 articles')).toBeTruthy()
+    expect(screen.getByText('Recent feed snapshot only.')).toBeTruthy()
+    expect(screen.getByText('Varies by source')).toBeTruthy()
+  })
+
+  it('labels feed-only headlines and keeps attribution links visible', async () => {
+    const latest = makeLatest()
+    const story = latest.briefing!.stories[0]
+    story.summary = null
+    story.investigation = { status: 'source_restricted', activity: [], decision_summary: 'Source processing is restricted.' }
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    expect(screen.getByText('Feed headline only. This story is excluded from generated summaries and investigation.')).toBeTruthy()
+    expect(screen.getAllByRole('link', { name: /Sample newsroom alpha/ }).length).toBeGreaterThan(0)
+    expect(screen.queryByText('From the reporting')).toBeNull()
+  })
+
 })

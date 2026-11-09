@@ -199,6 +199,13 @@ def rank_stories(result, settings=None):
         warnings.append("The article collection is incomplete. Scores describe only the downloaded sample.")
     if result.get("freshness_delay_hours", 0):
         warnings.append(f"The source excludes the latest {result['freshness_delay_hours']} hours.")
+    for source in result.get("sources", []):
+        if source.get("delay_hours"):
+            warnings.append(f"{source['name']} excludes the latest {source['delay_hours']} hours. Other sources have their own availability.")
+        if source.get("kind") == "rss":
+            warnings.append(f"{source['name']} is a recent feed snapshot, not a complete archive of this window.")
+        if source.get("status") in {"failed", "skipped", "unconfigured"}:
+            warnings.append(f"{source['name']}: {source.get('error') or source.get('note') or 'Unavailable'}")
     if any(story["needs_review"] for story in candidates):
         warnings.append("Story groups still need review.")
     if result.get("skipped_records"):
@@ -210,7 +217,7 @@ def rank_stories(result, settings=None):
     return dict(title="Sample briefing (fictional data)" if mode == "sample" else "Most-covered stories among our monitored sources",
                 data_mode=mode, source=result.get("source", "GNews"), experimental=bool(warnings),
                 warnings=warnings, as_of=as_of.isoformat(), window_start=start.isoformat(), window_end=end.isoformat(),
-                processing_run_id=result.get("run_id"), settings=asdict(settings),
+                sources=result.get("sources", []), processing_run_id=result.get("run_id"), settings=asdict(settings),
                 stories=selected, candidates=candidates)
 
 

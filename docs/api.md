@@ -31,7 +31,9 @@ are different states.
 ```
 
 Days can be 1 through 7. The request limit can be 1 through 5, with a default of
-3. Collection has a 90-second overall limit and 30 seconds per source request.
+3. This is the GNews budget. Each enabled RSS feed adds one bounded request.
+Collection has a 90-second overall limit, with at most 30 seconds per GNews
+request and 12 seconds per feed request.
 Requests are synchronous, so clients should keep their loading state until the
 response arrives. The investigation has a separate default 15-second limit after
 collection. Saved briefings remain readable throughout the refresh.
@@ -43,7 +45,8 @@ unexpected exceptions are returned without private key values or tracebacks.
 Successful partial collection returns HTTP 200 with a `partial` refresh status,
 the actual number of requests, and experimental score warnings. A source failure
 without article data returns HTTP 502 and preserves the previous briefing. A
-missing key returns HTTP 503. Database errors also return a safe HTTP 503 response.
+missing GNews key leaves the enabled RSS feeds available. Invalid source
+configuration returns HTTP 503. Database errors also return a safe HTTP 503 response.
 Invalid request parameters return HTTP 422.
 
 ## Sample mode
@@ -71,7 +74,7 @@ between starts and an app-specific allowance of 30 source requests per UTC day.
 Limit responses use HTTP 429 with `Retry-After`.
 
 The requested allowance is reserved before collection and replaced by the
-actual attempt count when collection finishes. An interrupted process keeps its
+actual attempt count when collection finishes. Enabled RSS feeds reserve one extra request each, in addition to the GNews request budget. An interrupted process keeps its
 reservation, which avoids silently losing request counts. Expired refresh leases
 are marked failed when another refresh starts. This is a small local refresh
 guard, not a distributed job system.
@@ -95,3 +98,6 @@ unavailable investigation does not remove the deterministic scores. Freshness re
 without a reviewed development. The small live sample can still produce zero
 eligible stories, and the API keeps that result honest. The dashboard should
 show the warnings and candidate evidence rather than inventing ten stories.
+
+
+Live refreshes now also collect the enabled Yahoo NBA feed. See [feed collection](feeds.md) for source policies, per-source status, partial coverage, and investigation restrictions.

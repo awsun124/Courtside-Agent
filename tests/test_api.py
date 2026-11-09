@@ -73,6 +73,35 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get(f"/api/stories/{story_id}")).status_code, 404)
         self.assertEqual((await self.client.get(f"/api/stories/{story_id}?mode=sample")).status_code, 200)
 
+    async def test_default_pipeline_saves_feed_only_status_and_respects_source_failure(self):
+        from courtside.sources import collect_sources
+        from test_feeds import feed
+        self.env_file.unlink()
+        self.app.state.news.custom_collector = False
+        self.app.state.news.collector = lambda options, key, now: collect_sources(options, key, now, feed_transport=lambda *args: feed())
+        with patch.dict("os.environ", {}, clear=True):
+            response = await self.refresh()
+        self.assertEqual(response.status_code, 200)
+        saved = response.json()
+        self.assertEqual(saved["refresh"]["requests_used"], 1)
+        self.assertEqual(saved["briefing"]["source"], "Monitored sources")
+        self.assertEqual(saved["briefing"]["sources"][0]["status"], "unconfigured")
+        self.assertEqual(saved["briefing"]["sources"][1]["status"], "ok")
+        story = saved["briefing"]["candidates"][0]
+        self.assertEqual(story["investigation"]["status"], "source_restricted")
+        detail = (await self.client.get(f"/api/stories/{story['id']}")).json()
+        self.assertEqual(detail["articles"][0]["collection_sources"], ["yahoo-nba"])
+        self.now += timedelta(seconds=61)
+        def fail(*args):
+            raise SourceError("No source available")
+        self.app.state.news.collector = fail
+        with patch.dict("os.environ", {}, clear=True):
+            failed = await self.refresh()
+        self.assertEqual(failed.status_code, 502)
+        latest = (await self.client.get("/api/briefings/latest")).json()
+        self.assertEqual(latest["briefing"]["briefing_id"], saved["briefing"]["briefing_id"])
+        self.assertEqual(latest["status"]["last_attempt"]["status"], "failed")
+
     async def test_live_refresh_rejects_accidental_sample_fallback(self):
         self.change_report = lambda report: {**report, "mode": "sample", "provider": "Sample"}
         response = await self.refresh()

@@ -68,7 +68,10 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
         <p className="source-caption">From the reporting</p>
         <p className="story-summary">{summary.text}</p>
         <div className="citation-links">{summary.citations.map(citation => <SourceLink key={citation.evidence_id} url={citation.url}>{citation.publisher}</SourceLink>)}</div>
-      </> : <p className="missing-summary">No evidence check has been saved for this briefing yet. Original reporting is linked below.</p>}
+      </> : <>
+        <p className="missing-summary">{story.investigation?.status === 'source_restricted' ? 'Feed headline only. This story is excluded from generated summaries and investigation.' : 'No evidence check has been saved for this briefing yet. Original reporting is linked below.'}</p>
+        <div className="citation-links">{story.evidence_urls.map((url, index) => <SourceLink key={url} url={url}>{story.publishers[index] ?? 'Original source'}</SourceLink>)}</div>
+      </>}
       <div className="story-meta">
         <span>{story.publishers.join(' · ')}</span>
         <span title={reportedAt}>{reportedAt ? `Reported ${formatDate(reportedAt, true)}` : 'Report time unavailable'}</span>
@@ -107,6 +110,7 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
             {detail?.articles.map(article => <div className="source-entry" key={article.url}>
               <SourceLink url={article.url}>{article.title}</SourceLink>
               <p>{article.publisher_name} · Published {formatDate(article.published_at, true)}</p>
+              {article.attribution_note && <p>{article.attribution_note}</p>}
               <p className="collection-time">Collected {formatDate(article.collected_at, true)}</p>
             </div>)}
             {!detail && <ul>{story.evidence_urls.map((url, index) => <li key={url}><SourceLink url={url}>{story.publishers[index] ?? `Source ${index + 1}`}</SourceLink></li>)}</ul>}

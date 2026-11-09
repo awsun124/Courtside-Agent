@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 
-from scripts.validate_gnews import collect_articles, load_api_key, SourceError
+from scripts.validate_gnews import load_api_key, SourceError
+from .sources import collect_sources, DEFAULT_SOURCES
+from .feeds import load_sources
 from .ranking import RankingSettings, rank_stories
 from .sample_data import sample_report
 from .investigate import add_investigations
@@ -23,11 +25,13 @@ class RefreshError(Exception):
 
 
 class NewsService:
-    def __init__(self, database, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None):
+    def __init__(self, database, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None, sources_file=None):
         self.database = Path(database)
         self.env_file = Path(env_file or PROJECT_ROOT / ".env")
         self.settings_file = Path(settings_file or PROJECT_ROOT / "config/ranking.json")
-        self.collector = collector or collect_articles
+        self.custom_collector = collector is not None
+        self.sources_file = Path(sources_file or DEFAULT_SOURCES)
+        self.collector = collector or (lambda options, key, now: collect_sources(options, key, now, self.sources_file))
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.investigation_file = investigation_file
         initialize_database(self.database)
@@ -65,7 +69,14 @@ class NewsService:
 
     def refresh(self, mode, days, max_requests):
         now = self.clock().replace(microsecond=0)
-        job = start_refresh(self.database, mode, now, max_requests if mode == "live" else 0, max_seconds=120)
+        try:
+            reserved_requests = 0
+            if mode == "live":
+                feed_count = 0 if self.custom_collector else len(load_sources(self.sources_file))
+                reserved_requests = max_requests + feed_count
+        except (ValueError, OSError):
+            raise RefreshError(503, "Source configuration is invalid. The previous briefing is unchanged.") from None
+        job = start_refresh(self.database, mode, now, reserved_requests, max_seconds=120)
         if "error" in job:
             raise RefreshError(job["status_code"], job["error"], job["retry_after"])
         used, api_key = 0, None
@@ -78,20 +89,21 @@ class NewsService:
                 try:
                     api_key = load_api_key(self.env_file)
                 except SourceError:
-                    raise RefreshError(503, "Configure GNEWS_API_KEY on the server before a live refresh. Sample mode is available explicitly.") from None
+                    if self.custom_collector:
+                        raise RefreshError(503, "Configure GNEWS_API_KEY on the server before a live refresh. Sample mode is available explicitly.") from None
                 options = Namespace(days=days, query="NBA", max_requests=max_requests, max_seconds=90, timeout=30)
                 try:
                     report = self.collector(options, api_key, now)
                 except SourceError:
-                    used = max_requests
+                    used = reserved_requests
                     raise RefreshError(502, "The news source failed. Any previous briefing is still available.") from None
                 used = len(report["attempts"])
                 if any(attempt["status"] == "failed" for attempt in report["attempts"]) and not report["articles"]:
                     raise RefreshError(502, "The news source failed. Any previous briefing is still available.")
                 if any(attempt["status"] == "failed" for attempt in report["attempts"]):
                     report["complete_available_results"] = False
-            expected_source = "Sample" if mode == "sample" else "GNews"
-            if report.get("mode") != mode or report.get("provider") != expected_source:
+            expected_sources = {"Sample"} if mode == "sample" else {"GNews" if self.custom_collector else "Monitored sources"}
+            if report.get("mode") != mode or report.get("provider") not in expected_sources:
                 raise RefreshError(502, "The source returned an unexpected data mode. The previous briefing is unchanged.")
             result = process_report(report)
             briefing = rank_stories(result, settings)
@@ -109,7 +121,7 @@ class NewsService:
             finish_refresh(self.database, job["id"], self.clock(), "failed", used, error=str(error))
             raise
         except Exception:
-            finish_refresh(self.database, job["id"], self.clock(), "failed", max(used, max_requests if api_key else 0),
+            finish_refresh(self.database, job["id"], self.clock(), "failed", max(used, reserved_requests),
                            error="Refresh could not finish. Any previous briefing is still available.")
             raise RefreshError(500, "Refresh could not finish. Any previous briefing is still available.") from None
         return dict(refresh=read_refreshes(self.database, mode)[0], **self.latest(mode))

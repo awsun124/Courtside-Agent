@@ -1,0 +1,15 @@
+{
+  "feeds": [
+    {"id": "yahoo-nba", "enabled": true},
+    {"id": "espn-nba", "enabled": false},
+    {"id": "cbs-nba", "enabled": false},
+    {"id": "hoops-rumors", "enabled": false},
+    {"id": "realgm", "enabled": false},
+    {"id": "athletic-nba", "enabled": false},
+    {"id": "guardian-nba", "enabled": false},
+    {"id": "post-nba", "enabled": false},
+    {"id": "hoops-wire", "enabled": false},
+    {"id": "basketball-insiders", "enabled": false},
+    {"id": "bleacher-report", "enabled": false}
+  ]
+}

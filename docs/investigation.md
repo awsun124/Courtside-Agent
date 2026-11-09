@@ -119,3 +119,8 @@ their support for this tool schema and `max_completion_tokens`.
 
 References: [function calling](https://developers.openai.com/api/docs/guides/function-calling)
 and [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
+
+
+## Feed restrictions
+
+Feed-only material is excluded before investigation starts. A cluster containing restricted material keeps its deterministic score and source links but receives no generated summary or investigation. Restricted articles and previous candidate contexts are withheld from provider inputs. See [feed collection](feeds.md).

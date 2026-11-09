@@ -43,6 +43,40 @@ class InvestigationTests(unittest.TestCase):
             self.assertTrue(story["summary"]["citations"])
             self.assertEqual(story["summary"]["kind"], "source_excerpts")
 
+    def test_restricted_feed_material_never_enters_investigation(self):
+        result, briefing = fixtures()
+        blocked_story = result["stories"][0]
+        blocked_urls = set(blocked_story["article_urls"])
+        for article in result["articles"]:
+            if article["canonical_url"] in blocked_urls:
+                article["investigation_allowed"] = False
+        before = [(story["id"], story["score"], story["rank"]) for story in briefing["candidates"]]
+        previous = deepcopy(briefing)
+        def inspect(permitted, saved, history, *args):
+            self.assertTrue(all(article["canonical_url"] not in blocked_urls for article in permitted["articles"]))
+            self.assertTrue(all(story["id"] != blocked_story["id"] for story in saved["candidates"]))
+            self.assertTrue(all(story["id"] != blocked_story["id"] for story in history[0]["candidates"]))
+            saved["investigation"] = dict(status="complete", llm_calls=0)
+            return saved
+        with patch("courtside.investigate.investigate_briefing", side_effect=inspect) as investigate:
+            saved = add_investigations(result, briefing, [previous])
+        self.assertEqual(investigate.call_count, 1)
+        restricted = next(story for story in saved["candidates"] if story["id"] == blocked_story["id"])
+        self.assertIsNone(restricted["summary"])
+        self.assertEqual(restricted["investigation"]["status"], "source_restricted")
+        self.assertEqual(before, [(story["id"], story["score"], story["rank"]) for story in saved["candidates"]])
+
+    def test_all_restricted_stories_do_not_initialize_a_provider(self):
+        result, briefing = fixtures()
+        for article in result["articles"]:
+            article["investigation_allowed"] = False
+        with patch("courtside.investigate.ChatProvider") as provider, patch("courtside.investigate.investigate_briefing") as investigator:
+            saved = add_investigations(result, briefing, [])
+        provider.assert_not_called()
+        investigator.assert_not_called()
+        self.assertEqual(saved["investigation"]["llm_calls"], 0)
+        self.assertTrue(all(story["summary"] is None for story in saved["candidates"]))
+
     def test_each_quote_must_match_retrieved_target_evidence(self):
         result, briefing = fixtures()
         tools = EvidenceTools(result, briefing, [])

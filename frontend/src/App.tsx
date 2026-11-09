@@ -75,9 +75,9 @@ export default function App() {
 
         <aside className="briefing-sidebar" aria-label="Briefing context">
           <section className="edition-panel"><div className="aside-heading"><h2>This edition</h2><span className={`source-dot ${mode === 'sample' ? 'sample-dot' : ''}`} aria-hidden="true" /></div>
-            <dl><div><dt>Source</dt><dd>{mode === 'sample' ? 'Fictional sample' : briefing?.source ?? 'GNews'}</dd></div>
+            <dl><div><dt>Source</dt><dd>{mode === 'sample' ? 'Fictional sample' : briefing?.source ?? 'Monitored sources'}</dd></div>
               <div><dt>Available coverage</dt><dd>{briefing ? `${formatDate(briefing.window_start)} – ${formatDate(briefing.window_end)}` : 'Not collected yet'}</dd></div>
-              <div><dt>Source delay</dt><dd>{briefing?.warnings.some(note => note.includes('12 hours')) ? '12 hours' : briefing ? 'See coverage notes' : '12 hours on free access'}</dd></div>
+              <div><dt>Source delay</dt><dd>{briefing?.sources?.length ? 'Varies by source' : briefing?.warnings.some(note => note.includes('12 hours')) ? '12 hours' : briefing ? 'See coverage notes' : '12 hours on free access'}</dd></div>
               <div><dt>Publishers in view</dt><dd>{briefing ? publishers.size : '—'}</dd></div>
               <div><dt>Saved briefing</dt><dd>{briefing ? `#${String(briefing.briefing_id).padStart(3, '0')}` : 'Not available'}</dd></div>
             </dl>
@@ -89,6 +89,15 @@ export default function App() {
             <a className="method-link" href="https://github.com/awsun124/Courtside-Agent/blob/main/docs/ranking.md" target="_blank" rel="noopener noreferrer">Read the methodology<Icon name="external" /></a>
           </section>
 
+          {!!briefing?.sources?.length && <details className="sidebar-details"><summary>Collection sources<Icon name="chevron" /></summary><div className="details-body">
+            <ul className="history-list">{briefing.sources.map(source => <li key={source.id}>
+              <strong>{source.name}</strong><p>{source.status.replaceAll('_', ' ')} · {plural(source.article_count, 'article')}</p>
+              {source.collected_at && <p>Last fetched {formatDate(source.collected_at, true)}</p>}
+              {source.delay_hours ? <p>{source.delay_hours}-hour delay</p> : null}
+              {(source.error || source.note) && <p>{source.error || source.note}</p>}
+              {!!source.rejected_records && <p>{plural(source.rejected_records, 'item')} could not be used.</p>}
+            </li>)}</ul>
+          </div></details>}
           {briefing && <details className="sidebar-details"><summary>Coverage notes<Icon name="chevron" /></summary><div className="details-body"><ul>{briefing.warnings.map(note => <li key={note}>{note}</li>)}</ul><p>Source dates and claims have not been independently verified.</p></div></details>}
           <details className="sidebar-details"><summary>Recent briefings<Icon name="chevron" /></summary><div className="details-body">
             {state.historyError ? <p>Briefing history could not be loaded.</p> : state.history.length === 0 ? <p>No briefings saved in this mode yet.</p> : <ul className="history-list">{state.history.map(item => <li key={item.briefing_id}><span>#{String(item.briefing_id).padStart(3, '0')}<time dateTime={item.as_of}>{formatDate(item.as_of, true)}</time></span><small>{plural(item.story_count, 'ranked story')} · {plural(item.candidate_count, 'candidate')}</small></li>)}</ul>}
