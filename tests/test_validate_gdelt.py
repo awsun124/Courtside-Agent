@@ -13,8 +13,8 @@ from contextlib import redirect_stdout, redirect_stderr
 from urllib.parse import parse_qs, urlsplit
 
 from scripts.validate_gdelt import (
-    UTC, SourceError, canonical_url, collect, decode_response, export, fetch, normalize,
-    title_key, triage, windows,
+    UTC, SourceError, canonical_url, collect_articles, decode_response, save_report, fetch, parse_article,
+    normalize_title, classify_title, split_date_range,
 )
 
 END = datetime(2026, 11, 9, tzinfo=UTC)
@@ -45,7 +45,7 @@ def run(transport, timer=None, **overrides):
         setattr(args, key, value)
     timer = timer or FakeTime()
     with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-        return collect(args, END, transport, timer.clock, timer.sleep)
+        return collect_articles(args, END, transport, timer.clock, timer.sleep)
 
 
 class ValidationTests(unittest.TestCase):
@@ -91,11 +91,11 @@ class ValidationTests(unittest.TestCase):
         start = END - timedelta(days=1)
         for seen in ["20261107T235959Z", "20261109T000001Z", "bad-date"]:
             with self.assertRaises(ValueError):
-                normalize(row(seen=seen), "collection-time", start, END)
-        self.assertEqual(len(list(windows(END - timedelta(days=7), END, 24))), 7)
+                parse_article(row(seen=seen), "collection-time", start, END)
+        self.assertEqual(len(list(split_date_range(END - timedelta(days=7), END, 24))), 7)
 
     def test_attribution_does_not_invent_publisher_or_publication_date(self):
-        article = normalize(row(), "collection-time", END - timedelta(days=1), END)
+        article = parse_article(row(), "collection-time", END - timedelta(days=1), END)
         self.assertEqual(article["publisher_host"], "example.com")
         self.assertEqual(article["gdelt_domain"], "different.example")
         self.assertEqual(article["collected_at"], "collection-time")
@@ -117,13 +117,13 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["unique_urls"], 2)
         self.assertEqual(report["summary"]["repeated_url_observations"], 1)
         self.assertEqual(len(report["possible_duplicate_titles"]), 1)
-        self.assertEqual(title_key("Bulls &amp; Lakers!"), "bulls lakers")
+        self.assertEqual(normalize_title("Bulls &amp; Lakers!"), "bulls lakers")
 
     def test_relevance_is_conservative_not_player_only_matching(self):
-        self.assertEqual(triage("NBA promo code for tonight")[0], "excluded")
-        self.assertEqual(triage("Celtics announce a trade")[0], "candidate")
-        self.assertEqual(triage("LeBron shares his favorite restaurant")[0], "uncertain")
-        self.assertEqual(triage("Thunder storms hit Florida")[0], "uncertain")
+        self.assertEqual(classify_title("NBA promo code for tonight")[0], "excluded")
+        self.assertEqual(classify_title("Celtics announce a trade")[0], "candidate")
+        self.assertEqual(classify_title("LeBron shares his favorite restaurant")[0], "uncertain")
+        self.assertEqual(classify_title("Thunder storms hit Florida")[0], "uncertain")
 
     def test_retries_are_paced_and_recovery_clears_error(self):
         timer, calls = FakeTime(), []
@@ -180,12 +180,12 @@ class ValidationTests(unittest.TestCase):
         report = run(lambda url, timeout: [row(title="=UNTRUSTED()")])
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder)
-            export(report, output)
+            save_report(report, output)
             saved = json.loads((output / "report.json").read_text())
             self.assertEqual(saved["articles"][0]["title"], "=UNTRUSTED()")
             with (output / "articles.csv").open() as stream:
                 self.assertTrue(next(csv.DictReader(stream))["title"].startswith("'="))
-            self.assertIn("ALL WINDOWS UNCAPPED", (output / "report.md").read_text())
+            self.assertIn("All requested windows checked", (output / "report.md").read_text())
 
 
 if __name__ == "__main__":

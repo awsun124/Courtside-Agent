@@ -1,4 +1,4 @@
-# GDELT evaluation — November 9, 2026
+# GDELT test results (November 9, 2026)
 
 Command run from this checkout:
 
@@ -25,12 +25,10 @@ canonical URLs, title groups, relevance hints, rate-limit/schema errors, paced
 retries, request/time budgets, capped-window splitting, and safe exports.
 The tests use injected responses and a virtual clock, not external services.
 
-Recommendation: keep this collector as an experimental adapter. Do not yet
-build a weekly most-covered ranking around GDELT alone. The rate-limit responses
-are a service-access limitation; SSL timeouts can also involve the network path
-or this environment and do not prove a global GDELT outage. A later bounded
-retry from the deployment environment, or evaluation of another documented
-historical search API, is needed before choosing the production discovery source.
+Keep the GDELT script for testing, but do not use it as the only source for a
+weekly ranking yet. The API rejected requests with rate limits. Connection
+timeouts may also involve this network and do not prove GDELT is down everywhere.
+Try again later or test another news API before choosing a source for the app.
 RSS alone cannot guarantee on-demand seven-day history.
 
 ## Connection troubleshooting

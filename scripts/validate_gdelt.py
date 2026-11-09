@@ -1,4 +1,4 @@
-"""Bounded GDELT metadata evaluation using the standard library and curl."""
+"""Check GDELT's NBA coverage with a limit on requests and running time."""
 from __future__ import annotations
 
 import argparse
@@ -18,11 +18,11 @@ UTC = timezone.utc
 ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc"
 
 
-def iso(value):
+def format_time(value):
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
-def parse_seen(value):
+def parse_seen_at(value):
     return datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
 
 
@@ -38,12 +38,12 @@ def canonical_url(value):
     return urlunsplit((parts.scheme.lower(), host, parts.path or "/", urlencode(sorted(query)), ""))
 
 
-def title_key(title):
+def normalize_title(title):
     return " ".join(re.findall(r"\w+", html.unescape(title).casefold()))
 
 
-def triage(title):
-    text = title_key(title)
+def classify_title(title):
+    text = normalize_title(title)
     if re.search(r"\b(promo code|referral code|best bets|betting promos|sportsbook bonus)\b", text):
         return "excluded", "promotional/betting title"
     if re.search(r"\b(nba|national basketball association|lakers|celtics|knicks|76ers|sixers|"
@@ -52,8 +52,8 @@ def triage(title):
                  r"miami heat|chicago bulls|milwaukee bucks|denver nuggets|indiana pacers|houston rockets|"
                  r"detroit pistons|atlanta hawks|charlotte hornets|orlando magic|phoenix suns|"
                  r"sacramento kings|san antonio spurs|utah jazz|washington wizards)\b", text):
-        return "candidate", "NBA/team title cue; event relevance unverified"
-    return "uncertain", "no unambiguous NBA title cue; manual review required"
+        return "candidate", "title mentions the NBA or a team, needs review"
+    return "uncertain", "title alone is not enough to tell, needs review"
 
 
 class SourceError(Exception):
@@ -72,12 +72,12 @@ def decode_response(status, body):
     if status != 200:
         raise SourceError(f"GDELT HTTP {status}")
     try:
-        data = json.loads(body)
+        response_data = json.loads(body)
     except ValueError:
         raise SourceError("Non-JSON response: " + body[:180].replace("\n", " ")) from None
-    if not isinstance(data, dict) or not isinstance(data.get("articles"), list):
+    if not isinstance(response_data, dict) or not isinstance(response_data.get("articles"), list):
         raise SourceError("JSON response missing articles array")
-    return data["articles"]
+    return response_data["articles"]
 
 
 def fetch(url, timeout, connect_timeout=20):
@@ -116,132 +116,132 @@ def fetch(url, timeout, connect_timeout=20):
         raise
 
 
-def windows(start, end, hours):
+def split_date_range(start, end, hours):
     while start < end:
         stop = min(end, start + timedelta(hours=hours))
         yield start, stop
         start = stop
 
 
-def normalize(raw, collected_at, start, end):
-    if not isinstance(raw, dict):
+def parse_article(raw_article, collected_at, start, end):
+    if not isinstance(raw_article, dict):
         raise ValueError("article is not an object")
-    url, title = raw.get("url"), raw.get("title")
+    url, title = raw_article.get("url"), raw_article.get("title")
     if not isinstance(url, str) or not isinstance(title, str) or not title.strip():
         raise ValueError("missing URL/title")
     canonical = canonical_url(url)
-    seen = parse_seen(raw.get("seendate", ""))
+    seen = parse_seen_at(raw_article.get("seendate", ""))
     if not start <= seen <= end:
         raise ValueError("observed timestamp outside response window")
-    relevance, reason = triage(title)
+    relevance, reason = classify_title(title)
     return dict(url=url, canonical_url=canonical, title=html.unescape(title).strip(),
                 publisher_host=urlsplit(canonical).hostname, publisher_name=None,
-                gdelt_domain=raw.get("domain"), gdelt_seen_at=iso(seen),
+                gdelt_domain=raw_article.get("domain"), gdelt_seen_at=format_time(seen),
                 published_at=None, collected_at=collected_at,
-                language=raw.get("language"), source_country=raw.get("sourcecountry"),
+                language=raw_article.get("language"), source_country=raw_article.get("sourcecountry"),
                 relevance=relevance, relevance_reason=reason)
 
 
-def collect(args, end, transport=None, clock=time.monotonic, sleep=time.sleep):
+def collect_articles(args, end, transport=None, clock=time.monotonic, sleep=time.sleep):
     connect_timeout = getattr(args, "connect_timeout", 20)
     if transport is None:
         transport = lambda url, timeout: fetch(url, timeout, connect_timeout)
     start = end - timedelta(days=args.days)
-    pending = deque(windows(start, end, args.window_hours))
+    pending = deque(split_date_range(start, end, args.window_hours))
     deadline, last_request = clock() + args.max_seconds, None
-    next_allowed = 0
+    next_request_at = 0
     attempts, intervals, articles, rejected = [], [], {}, []
     duplicate_urls = 0
     while pending:
-        lo, hi = pending.popleft()
-        interval = dict(start=iso(lo), end=iso(hi), status="unattempted")
+        window_start, window_end = pending.popleft()
+        interval = dict(start=format_time(window_start), end=format_time(window_end), status="unattempted")
         intervals.append(interval)
-        params = dict(query=args.query, mode="artlist", format="json", sort="datedesc",
-                      maxrecords=args.max_records, startdatetime=lo.strftime("%Y%m%d%H%M%S"),
-                      enddatetime=hi.strftime("%Y%m%d%H%M%S"))
-        url = ENDPOINT + "?" + urlencode(params)
+        query_params = dict(query=args.query, mode="artlist", format="json", sort="datedesc",
+                      maxrecords=args.max_records, startdatetime=window_start.strftime("%Y%m%d%H%M%S"),
+                      enddatetime=window_end.strftime("%Y%m%d%H%M%S"))
+        url = ENDPOINT + "?" + urlencode(query_params)
         for retry in range(args.retries + 1):
             delay = 0 if last_request is None else max(0, last_request + args.interval * (2 ** retry) - clock())
-            delay = max(delay, next_allowed - clock())
+            delay = max(delay, next_request_at - clock())
             if len(attempts) >= args.max_requests or deadline - clock() <= delay + 1:
                 break
             if delay:
                 sleep(delay)
             timeout = min(args.timeout, max(0.1, deadline - clock() - 0.3))
-            print(f"[{len(attempts) + 1}/{args.max_requests}] {iso(lo)} to {iso(hi)}", flush=True)
-            attempt = dict(start=iso(lo), end=iso(hi), url=url, retry=retry)
+            print(f"[{len(attempts) + 1}/{args.max_requests}] {format_time(window_start)} to {format_time(window_end)}", flush=True)
+            attempt = dict(start=format_time(window_start), end=format_time(window_end), url=url, retry=retry)
             attempts.append(attempt)
             try:
                 rows = transport(url, timeout)
                 attempt.update(status="ok", count=len(rows))
                 interval.pop("error", None)
                 interval.update(status="capped" if len(rows) >= args.max_records else "ok", count=len(rows))
-                for raw in rows:
+                for raw_article in rows:
                     try:
-                        article = normalize(raw, iso(datetime.now(UTC)), lo, hi)
+                        article = parse_article(raw_article, format_time(datetime.now(UTC)), window_start, window_end)
                         key = article["canonical_url"]
                         if key in articles:
                             duplicate_urls += 1
                         else:
                             articles[key] = article
                     except (ValueError, TypeError, AttributeError) as error:
-                        rejected.append(dict(reason=str(error), record=raw))
-                if interval["status"] == "capped" and hi - lo >= timedelta(minutes=30):
-                    mid = lo + timedelta(seconds=int((hi - lo).total_seconds()) // 2)
-                    pending.extend([(lo, mid), (mid, hi)])
+                        rejected.append(dict(reason=str(error), record=raw_article))
+                if interval["status"] == "capped" and window_end - window_start >= timedelta(minutes=30):
+                    mid = window_start + timedelta(seconds=int((window_end - window_start).total_seconds()) // 2)
+                    pending.extend([(window_start, mid), (mid, window_end)])
                     interval["status"] = "split"
                 break
             except SourceError as error:
                 attempt.update(status="failed", error=str(error))
                 attempt["connection"] = error.details
-                next_allowed = clock() + error.cooldown
+                next_request_at = clock() + error.cooldown
                 interval.update(status="failed", error=str(error))
                 print(f"  {error}", file=sys.stderr, flush=True)
                 if not error.retryable:
                     break
             finally:
                 last_request = clock()
-    values = sorted(articles.values(), key=lambda a: a["gdelt_seen_at"], reverse=True)
+    saved_articles = sorted(articles.values(), key=lambda a: a["gdelt_seen_at"], reverse=True)
     groups = defaultdict(list)
-    for article in values:
-        groups[title_key(article["title"])].append(article["url"])
+    for article in saved_articles:
+        groups[normalize_title(article["title"])].append(article["url"])
     duplicates = [dict(normalized_title=k, urls=v) for k, v in groups.items() if len(v) > 1]
     incomplete = [x for x in intervals if x["status"] not in {"ok", "split"}]
-    return dict(mode="live", query=args.query, window_start=iso(start), window_end=iso(end),
-                generated_at=iso(datetime.now(UTC)), complete_query_windows=not incomplete and not rejected,
+    return dict(mode="live", query=args.query, window_start=format_time(start), window_end=format_time(end),
+                generated_at=format_time(datetime.now(UTC)), complete_query_windows=not incomplete and not rejected,
                 limits={**{k: getattr(args, k) for k in ("max_requests", "max_seconds", "timeout", "interval", "retries", "max_records")}, "connect_timeout": connect_timeout},
-                attempts=attempts, intervals=intervals, rejected_records=rejected, articles=values,
-                summary=dict(unique_urls=len(values), distinct_source_hosts=len({a["publisher_host"] for a in values}),
+                attempts=attempts, intervals=intervals, rejected_records=rejected, articles=saved_articles,
+                summary=dict(unique_urls=len(saved_articles), distinct_source_hosts=len({a["publisher_host"] for a in saved_articles}),
                              repeated_url_observations=duplicate_urls, possible_duplicate_title_groups=len(duplicates),
-                             relevance=dict(Counter(a["relevance"] for a in values)),
-                             observations_by_utc_day=dict(sorted(Counter(a["gdelt_seen_at"][:10] for a in values).items())),
-                             source_hosts=dict(Counter(a["publisher_host"] for a in values).most_common()),
-                             oldest_seen_at=min((a["gdelt_seen_at"] for a in values), default=None),
-                             newest_seen_at=max((a["gdelt_seen_at"] for a in values), default=None),
-                             missing_publication_dates=len(values),
-                             missing_gdelt_domains=sum(not a["gdelt_domain"] for a in values)),
+                             relevance=dict(Counter(a["relevance"] for a in saved_articles)),
+                             observations_by_utc_day=dict(sorted(Counter(a["gdelt_seen_at"][:10] for a in saved_articles).items())),
+                             source_hosts=dict(Counter(a["publisher_host"] for a in saved_articles).most_common()),
+                             oldest_seen_at=min((a["gdelt_seen_at"] for a in saved_articles), default=None),
+                             newest_seen_at=max((a["gdelt_seen_at"] for a in saved_articles), default=None),
+                             missing_publication_dates=len(saved_articles),
+                             missing_gdelt_domains=sum(not a["gdelt_domain"] for a in saved_articles)),
                 possible_duplicate_titles=duplicates)
 
 
 def render_report(report):
-    s = report["summary"]
-    lines = ["# Court Side — GDELT validation", "", "Mode: LIVE (no sample fallback)",
+    summary = report["summary"]
+    lines = ["# Courtside-Agent GDELT results", "", "Data source: live API",
              f"Window: {report['window_start']} to {report['window_end']}",
              f"Query: `{report['query']}`", "",
-             f"Query coverage: {'ALL WINDOWS UNCAPPED' if report['complete_query_windows'] else 'PARTIAL / UNVERIFIED'}",
-             f"HTTP attempts: {len(report['attempts'])}; unique URLs: {s['unique_urls']}; source hosts: {s['distinct_source_hosts']}",
-             f"Possible duplicate headline groups: {s['possible_duplicate_title_groups']}",
-             f"Repeated URL observations (including window overlap): {s['repeated_url_observations']}",
-             f"Title-only relevance hints: {s['relevance']}",
-             f"Observed timestamp span: {s['oldest_seen_at']} to {s['newest_seen_at']}",
-             f"Missing verified publication dates: {s['missing_publication_dates']}",
+             f"Collection: {'All requested windows checked' if report['complete_query_windows'] else 'Incomplete'}",
+             f"Requests: {len(report['attempts'])}, unique articles: {summary['unique_urls']}, source domains: {summary['distinct_source_hosts']}",
+             f"Possible duplicate headline groups: {summary['possible_duplicate_title_groups']}",
+             f"Repeated URL observations (including window overlap): {summary['repeated_url_observations']}",
+             f"Title checks: {summary['relevance']}",
+             f"Observed timestamp span: {summary['oldest_seen_at']} to {summary['newest_seen_at']}",
+             f"Missing verified publication dates: {summary['missing_publication_dates']}",
              f"Rejected records: {len(report['rejected_records'])}", "",
              "These are discovery results, not ranked stories. Hosts are not independent",
              "publishers. Title hints need manual review. Observed timestamps do not verify",
              "publication dates. Uncapped responses do not establish exhaustive NBA coverage.",
              "", "## Query intervals", ""]
     lines += [f"- {x['start']} to {x['end']}: {x['status']} ({x.get('count', 0)} rows){' — ' + x['error'] if x.get('error') else ''}" for x in report["intervals"]]
-    for heading, counts in [("Observed UTC days", s["observations_by_utc_day"]), ("Source hosts", s["source_hosts"])]:
+    for heading, counts in [("Articles by observed date (UTC)", summary["observations_by_utc_day"]), ("Source domains", summary["source_hosts"])]:
         lines += ["", f"## {heading}", ""]
         lines += [f"- {key}: {count}" for key, count in counts.items()]
     lines += ["", "## Review sample (first five per category)", ""]
@@ -249,11 +249,11 @@ def render_report(report):
         for a in [a for a in report["articles"] if a["relevance"] == category][:5]:
             lines += [f"- {category}: {a['title']} — {a['publisher_host']} — {a['url']}"]
     lines += ["", "Inspect articles.csv for all titles and report.json for errors, rejected",
-              "records, duplicate groups, and provenance. External titles are untrusted data.", ""]
+              "records, and possible duplicates. Article titles come from external sources.", ""]
     return "\n".join(lines)
 
 
-def export(report, output):
+def save_report(report, output):
     output.mkdir(parents=True, exist_ok=True)
     (output / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     (output / "report.md").write_text(render_report(report), encoding="utf-8")
@@ -284,8 +284,8 @@ def main():
             args.max_requests > 0 and args.max_seconds >= 1 and args.timeout >= 1 and args.connect_timeout >= 1 and
             args.interval >= 6 and 0 <= args.retries <= 3 and args.query.strip()):
         parser.error("Require 0.25–24 window hours, 1–250 records, positive budgets, interval >=6, retries 0–3, and a query")
-    report = collect(args, datetime.now(UTC).replace(microsecond=0))
-    export(report, args.output)
+    report = collect_articles(args, datetime.now(UTC).replace(microsecond=0))
+    save_report(report, args.output)
     print(render_report(report))
     print(f"Exports: {args.output.resolve()}")
     return 0 if report["complete_query_windows"] else 2

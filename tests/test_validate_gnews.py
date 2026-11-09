@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.validate_gnews import SourceError, UTC, collect, export, fetch_page, load_key, normalize
+from scripts.validate_gnews import SourceError, UTC, collect_articles, save_report, fetch_page, load_api_key, parse_article
 
 NOW = datetime(2026, 11, 9, tzinfo=UTC)
 
@@ -23,7 +23,7 @@ def row(index=1):
 def run(transport, max_requests=3):
     args = Namespace(days=3, query="NBA", max_requests=max_requests, max_seconds=90, timeout=30)
     with redirect_stdout(io.StringIO()):
-        return collect(args, "private-test-key", NOW, transport, sleep=lambda n: None)
+        return collect_articles(args, "private-test-key", NOW, transport, sleep=lambda n: None)
 
 
 class GNewsTests(unittest.TestCase):
@@ -31,10 +31,10 @@ class GNewsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, patch.dict('os.environ', {}, clear=True):
             p = Path(folder) / '.env'
             p.write_text('OTHER=$(bad-command)\nGNEWS_API_KEY="test-secret"\n')
-            self.assertEqual(load_key(p), 'test-secret')
+            self.assertEqual(load_api_key(p), 'test-secret')
             p.write_text('GNEWS_API_KEY=\n')
             with self.assertRaises(SourceError):
-                load_key(p)
+                load_api_key(p)
 
     def test_transport_sends_key_in_stdin_not_url_or_arguments(self):
         response = CompletedProcess([], 0, '{"totalArticles":0,"articles":[]}\n200', '')
@@ -51,12 +51,12 @@ class GNewsTests(unittest.TestCase):
         self.assertNotIn('secret-key', str(error.exception))
 
     def test_publication_filter_and_attribution(self):
-        article = normalize(row(), NOW - timedelta(days=3), NOW - timedelta(hours=12), 'collected')
+        article = parse_article(row(), NOW - timedelta(days=3), NOW - timedelta(hours=12), 'collected')
         self.assertEqual(article['publisher_name'], 'Example Sports')
         self.assertEqual(article['published_at'], '2026-11-07T12:00:00Z')
         for date in ['2026-11-01T12:00:00Z', '2026-11-09T00:00:00Z', '2026-11-07T12:00:00']:
             with self.assertRaises(ValueError):
-                normalize({**row(), 'publishedAt': date}, NOW - timedelta(days=3), NOW - timedelta(hours=12), 'collected')
+                parse_article({**row(), 'publishedAt': date}, NOW - timedelta(days=3), NOW - timedelta(hours=12), 'collected')
 
     def test_success_and_explicit_freshness_gap(self):
         r = run(lambda *args: dict(totalArticles=1, articles=[row()]))
@@ -93,7 +93,7 @@ class GNewsTests(unittest.TestCase):
         r = run(lambda *args: dict(totalArticles=1, articles=[row()]))
         r['query'] = 'private-test-key'
         with tempfile.TemporaryDirectory() as folder:
-            export(r, Path(folder), 'private-test-key')
+            save_report(r, Path(folder), 'private-test-key')
             for p in Path(folder).iterdir():
                 self.assertNotIn('private-test-key', p.read_text())
             saved = json.loads((Path(folder) / 'report.json').read_text())
