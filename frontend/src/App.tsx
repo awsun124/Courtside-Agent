@@ -1,0 +1,101 @@
+import { formatDate, plural, timeAgo, windowDays } from './format'
+import { Icon } from './Icons'
+import StoryCard from './StoryCard'
+import { useBriefing } from './useBriefing'
+
+function Brand() {
+  return <a className="brand" href="#top" aria-label="Court Side home">
+    <svg width="35" height="35" viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="6" fill="currentColor" /><g fill="none" stroke="#fffaf0" strokeWidth="1.4"><circle cx="20" cy="20" r="12" /><path d="M8 20h24M20 8v24M11 12c10 2 10 14 18 16M11 28c10-2 10-14 18-16" /></g></svg>
+    <span>COURT SIDE<span className="brand-period">.</span></span>
+  </a>
+}
+
+export default function App() {
+  const state = useBriefing()
+  const { data, mode, loading, refreshing, days } = state
+  const briefing = data?.briefing
+  const candidates = briefing?.candidates.filter(story => !story.rank) ?? []
+  const actualDays = briefing ? windowDays(briefing.window_start, briefing.as_of) : null
+  const pendingWindow = actualDays !== null && actualDays !== days
+  const isStale = data?.status.stale || Boolean(data?.status.last_successful_refresh && state.now - Date.parse(data.status.last_successful_refresh) > 6 * 3600000)
+  const failedAttempt = data?.status.last_attempt?.status === 'failed' || data?.status.last_attempt?.status === 'interrupted'
+  const publishers = new Set(briefing?.candidates.flatMap(story => story.publishers) ?? [])
+  const weights = briefing?.settings ?? { coverage_weight: 0.5, momentum_weight: 0.3, freshness_weight: 0.2 }
+  const refreshLabel = refreshing ? 'Refreshing…' : mode === 'sample' && !briefing ? 'Create sample briefing' : 'Refresh briefing'
+
+  return <div id="top">
+    <a className="skip-link" href="#briefing">Skip to briefing</a>
+    <header className="site-header"><div className="header-inner">
+      <Brand />
+      <nav aria-label="Main navigation"><a href="#briefing" className="active">NBA briefing</a><a href="#method">How we rank</a></nav>
+      <span className="header-date">{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(state.now)}</span>
+    </div></header>
+
+    <main className="page-shell">
+      <section className="page-intro" aria-labelledby="page-title">
+        <div><p className="eyebrow intro-kicker"><span className="small-rule" /> NBA NEWS / THE BRIEFING</p>
+          <h1 id="page-title">The NBA briefing<span>.</span></h1>
+          <p className="intro-copy">The most-covered stories across the sources we monitor.<br className="desktop-break" /> Distinct events, original links, and a clear look at the coverage.</p>
+        </div>
+        <div className="edition-mark"><span className="eyebrow">{mode === 'sample' ? 'TRY THE APP' : 'FOLLOW THE REPORTING'}</span><span className="edition-label">{mode === 'sample' ? 'Sample edition' : 'NBA / News'}</span><span>Updated when you refresh.</span></div>
+      </section>
+
+      <section className="toolbar" aria-label="Briefing controls">
+        <div className="window-control"><span className="control-label">Coverage window</span><div className="segmented" aria-label="Coverage window">{[1, 3, 7].map(value => <button key={value} aria-pressed={days === value} disabled={refreshing || loading} onClick={() => state.setDays(value)}>{value} {value === 1 ? 'day' : 'days'}</button>)}</div></div>
+        <div className="toolbar-actions"><div className="mode-control" aria-label="Data mode"><button aria-pressed={mode === 'live'} disabled={refreshing} onClick={() => state.changeMode('live')}>News</button><button aria-pressed={mode === 'sample'} disabled={refreshing} onClick={() => state.changeMode('sample')}>Sample</button></div>
+          <button className="refresh-button" disabled={refreshing || loading || state.retrySeconds > 0} onClick={() => void state.refresh()}><Icon name="refresh" className={refreshing ? 'spinning' : ''} />{refreshLabel}</button>
+        </div>
+      </section>
+
+      <div className="status-line"><span><Icon name="clock" />{data?.status.last_successful_refresh ? <>Last refreshed <time dateTime={data.status.last_successful_refresh} title={formatDate(data.status.last_successful_refresh, true)}>{timeAgo(data.status.last_successful_refresh, state.now)}</time></> : 'No saved refresh yet'}</span>
+        <span>{state.retrySeconds > 0 ? `Refresh available in ${state.retrySeconds < 60 ? `${state.retrySeconds}s` : `${Math.ceil(state.retrySeconds / 60)} min`}` : refreshing ? 'Reading coverage and checking evidence…' : 'Manual refresh only'}</span>
+      </div>
+
+      {mode === 'sample' && <div className="notice sample-notice"><strong>Sample data</strong><span>These stories and publishers are fictional. No external services are used.</span></div>}
+      {state.error && <div className="notice error-notice" role="alert"><div><strong>Something didn’t load.</strong><p>{state.error}</p></div><button className="text-button" disabled={loading || refreshing} onClick={state.reload}>Reload saved briefing</button></div>}
+      {!state.error && failedAttempt && <div className="notice error-notice" role="alert"><strong>The last refresh did not finish.</strong><span>{briefing ? 'Showing the last saved briefing.' : 'No new briefing was saved.'}</span></div>}
+      {isStale && <div className="notice"><strong>This briefing is getting old.</strong><span>It has been more than six hours since the last successful collection.</span></div>}
+      {pendingWindow && <div className="notice"><strong>Refresh to load the past {days} {days === 1 ? 'day' : 'days'}.</strong><span>You’re still viewing the saved {actualDays}-day briefing.</span></div>}
+
+      <div className="dashboard-layout">
+        <section id="briefing" className="news-column" aria-label="NBA briefing" aria-busy={loading || refreshing}>
+          <div className="section-heading"><div><p className="eyebrow">{mode === 'sample' ? 'FICTIONAL COVERAGE' : 'ACROSS THE LEAGUE'}</p><h2>The stories</h2></div><span className="story-count">{briefing ? `${briefing.stories.length} / 10` : 'Up to 10'}</span></div>
+          {loading && !briefing ? <div className="loading-state" role="status"><div className="loading-line" /><h3>Loading the saved briefing…</h3><p>Getting the stories and source details.</p></div>
+            : !briefing ? <div className="empty-state"><span className="empty-number">00</span><h3>{state.error ? 'The briefing is unavailable.' : 'The first briefing starts here.'}</h3><p>{state.error ? 'Your saved news will appear when the API is available again.' : mode === 'sample' ? 'Create a sample briefing to explore the layout with fictional news.' : 'Refresh to collect recent NBA coverage. You can also try the clearly labeled sample edition.'}</p>
+                {!state.error && <button className="secondary-button" disabled={refreshing || loading || state.retrySeconds > 0} onClick={() => void state.refresh()}>{mode === 'sample' ? 'Create sample briefing' : 'Collect the first briefing'}<Icon name="arrow" /></button>}
+              </div>
+              : <>
+                {briefing.experimental && <div className="coverage-note"><span className="tag">Provisional</span><p>{mode === 'sample' ? 'Fictional stories run through the same scoring and evidence checks.' : 'This collection is limited. Scores describe the reporting we have, and remain subject to review.'}</p></div>}
+                {briefing.stories.length === 0 && <div className="empty-ranking"><span className="empty-ranking-icon">0</span><div><h3>Not enough independent coverage yet.</h3><p>{candidates.length ? `${plural(candidates.length, 'candidate')} below still ${candidates.length === 1 ? 'needs' : 'need'} more reporting before entering the ranking.` : 'No stories in this collection meet the evidence minimum.'} We show fewer stories when the evidence is limited.</p></div></div>}
+                {briefing.stories.map(story => <StoryCard key={`${mode}-${briefing.briefing_id}-${story.id}`} story={story} briefing={briefing} mode={mode} />)}
+                {candidates.length > 0 && <><div className="radar-heading"><p className="eyebrow">NOT RANKED YET</p><h2>On our radar</h2><p>Stories to follow, with provisional scores and less supporting coverage.</p></div>
+                  {candidates.map(story => <StoryCard key={`${mode}-${briefing.briefing_id}-${story.id}`} story={story} briefing={briefing} mode={mode} />)}</>}
+              </>}
+        </section>
+
+        <aside className="briefing-sidebar" aria-label="Briefing context">
+          <section className="edition-panel"><div className="aside-heading"><h2>This edition</h2><span className={`source-dot ${mode === 'sample' ? 'sample-dot' : ''}`} aria-hidden="true" /></div>
+            <dl><div><dt>Source</dt><dd>{mode === 'sample' ? 'Fictional sample' : briefing?.source ?? 'GNews'}</dd></div>
+              <div><dt>Available coverage</dt><dd>{briefing ? `${formatDate(briefing.window_start)} – ${formatDate(briefing.window_end)}` : 'Not collected yet'}</dd></div>
+              <div><dt>Source delay</dt><dd>{briefing?.warnings.some(note => note.includes('12 hours')) ? '12 hours' : briefing ? 'See coverage notes' : '12 hours on free access'}</dd></div>
+              <div><dt>Publishers in view</dt><dd>{briefing ? publishers.size : '—'}</dd></div>
+              <div><dt>Saved briefing</dt><dd>{briefing ? `#${String(briefing.briefing_id).padStart(3, '0')}` : 'Not available'}</dd></div>
+            </dl>
+            <p className="aside-footnote">Several publisher links can carry the same report. Likely copies count once.</p>
+          </section>
+
+          <section className="method-panel" id="method"><p className="eyebrow">THE METHOD</p><h2>How the score works.</h2><p>Each story gets a score from three simple measures.</p>
+            {[['Coverage', weights.coverage_weight, 'How many independent publishers cover the event.'], ['Momentum', weights.momentum_weight, 'How quickly new reporting groups are joining the story.'], ['Freshness', weights.freshness_weight, 'The latest development backed by reviewed evidence.']].map(([label, weight, explanation]) => <div className="method-row" key={String(label)}><span className="method-weight">{Math.round(Number(weight) * 100)}<small>%</small></span><div><h3>{label}</h3><p>{explanation}</p></div></div>)}
+            <a className="method-link" href="https://github.com/awsun124/Courtside-Agent/blob/main/docs/ranking.md" target="_blank" rel="noopener noreferrer">Read the methodology<Icon name="external" /></a>
+          </section>
+
+          {briefing && <details className="sidebar-details"><summary>Coverage notes<Icon name="chevron" /></summary><div className="details-body"><ul>{briefing.warnings.map(note => <li key={note}>{note}</li>)}</ul><p>Source dates and claims have not been independently verified.</p></div></details>}
+          <details className="sidebar-details"><summary>Recent briefings<Icon name="chevron" /></summary><div className="details-body">
+            {state.historyError ? <p>Briefing history could not be loaded.</p> : state.history.length === 0 ? <p>No briefings saved in this mode yet.</p> : <ul className="history-list">{state.history.map(item => <li key={item.briefing_id}><span>#{String(item.briefing_id).padStart(3, '0')}<time dateTime={item.as_of}>{formatDate(item.as_of, true)}</time></span><small>{plural(item.story_count, 'ranked story')} · {plural(item.candidate_count, 'candidate')}</small></li>)}</ul>}
+          </div></details>
+        </aside>
+      </div>
+      <footer className="site-footer"><div><strong>COURT SIDE.</strong><p>The most-covered stories among our monitored sources.</p></div><a href="https://github.com/awsun124/Courtside-Agent" target="_blank" rel="noopener noreferrer">About the project<Icon name="external" /></a></footer>
+    </main>
+  </div>
+}
