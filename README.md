@@ -77,6 +77,35 @@ python3 -m unittest discover -s tests -v
 Tests run offline. They cover article dates, duplicate URLs and headlines,
 publisher details, request limits, errors, and private key handling.
 
+## Filter and group saved articles
+
+```sh
+python3 -m courtside.stories
+```
+
+This reads `artifacts/gnews-validation/report.json` without calling an API.
+It saves a readable report in `artifacts/stories/stories.md`, full results in
+`artifacts/stories/stories.json`, and articles and processing history in
+`artifacts/courtside.db`. These files stay local and are ignored by Git.
+
+Articles are marked `included`, `excluded`, or `review`, with a reason for each
+decision. Betting previews are excluded. Roundups, schedules, incidental mentions,
+and unclear events stay available for review. The current rules recognize game
+results, injuries, trades, and contracts. Other NBA stories may need review too.
+
+Story grouping checks the event type, teams or player names, publication times,
+and overlapping words. Game reports also check opponents and reported scores.
+Injuries to different body parts stay separate. Every article in a group must
+match every other article, which reduces accidental chains of unrelated reports.
+Matching headlines or nearly identical opening text are flagged as likely copies.
+They remain linked but contribute one estimated reporting group.
+
+These are conservative rules using limited metadata, not verified facts or a
+ranking. They can miss related articles and can still merge different updates.
+The rules do not resolve publisher ownership or original reporting. Story IDs
+are repeatable for the same input but are not yet matched across briefings.
+See [story processing notes](docs/story-processing.md) for the current limits.
+
 ## Before publishing
 
 Confirm the news provider's plan and content permissions before publishing the
