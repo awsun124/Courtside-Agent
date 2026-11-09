@@ -37,6 +37,75 @@ class StoryTests(unittest.TestCase):
                 result = process_report(report([article(case["title"], case["description"])]))
                 self.assertEqual(result["articles"][0]["decision"], case["decision"])
 
+    def test_reviewed_event_examples(self):
+        cases = json.loads((Path(__file__).parent / "fixtures/event_review.json").read_text())
+        for case in cases:
+            with self.subTest(title=case["title"], feed=case.get("feed", False)):
+                saved = article(case["title"], case["description"])
+                if case.get("feed"):
+                    saved.update(collection_sources=["yahoo-nba"], source_url="https://sports.yahoo.com/nba/rss/")
+                result = process_report(report([saved]))
+                processed = result["articles"][0]
+                self.assertEqual(processed["decision"], case["decision"])
+                if case.get("event"):
+                    self.assertEqual(processed["features"]["event"], case["event"])
+                if case.get("rumor"):
+                    self.assertTrue(processed["features"]["rumor"])
+
+    def test_feed_context_requires_the_matching_endpoint(self):
+        saved = article("Maxey leads Sixers past Bulls", "")
+        saved.update(collection_sources=["yahoo-nba"], source_url="https://unrelated.example/feed")
+        result = process_report(report([saved]))
+        self.assertFalse(result["articles"][0]["nba_context"])
+        self.assertEqual(result["articles"][0]["decision"], "review")
+        saved["source_url"] = "https://sports.yahoo.com/nba/rss/"
+        result = process_report(report([saved]))
+        self.assertTrue(result["articles"][0]["nba_context"])
+        self.assertEqual(result["articles"][0]["context_basis"], "NBA-specific feed")
+        self.assertEqual(result["articles"][0]["decision"], "included")
+
+    def test_host_announcements_require_same_year_and_city_to_group(self):
+        articles = [article("Denver to host NBA All-Star Game in 2029", ""),
+                    article("Denver reportedly to host NBA All-Star Game in 2029", "", url="https://second.com/host"),
+                    article("Denver to host NBA All-Star Game in 2030", "", url="https://third.com/host"),
+                    article("Seattle to host NBA All-Star Game in 2029", "", url="https://fourth.com/host")]
+        result = process_report(report(articles))
+        self.assertEqual(sorted(len(story["article_urls"]) for story in result["stories"]), [1, 1, 2])
+
+    def test_off_court_reports_group_without_merging_other_players_or_events(self):
+        titles = ["NBA star Marcus Reed says family safe after alleged stalker arrested at home",
+                  "Stalking suspect arrested at NBA player Marcus Reed home",
+                  "Stalking suspect arrested at NBA player Jordan Smith home",
+                  "Stalking suspect arrested at NBA player Marcus Reed arena",
+                  "Lakers sign Marcus Reed to contract extension"]
+        articles = [article(title, "", url=f"https://example.com/{index}") for index, title in enumerate(titles)]
+        result = process_report(report(articles))
+        self.assertEqual(sorted(len(story["article_urls"]) for story in result["stories"]), [1, 1, 1, 2])
+
+    def test_milestones_with_different_stats_do_not_merge(self):
+        first = article("Marcus Reed ties NBA record with 12 assists", "")
+        second = article("Marcus Reed ties NBA record with 40 points", "", url="https://second.com/record")
+        result = process_report(report([first, second]))
+        self.assertEqual(len(result["stories"]), 2)
+
+    def test_game_result_is_not_reclassified_by_an_incidental_injury(self):
+        saved = article("Lakers beat Pistons 110-102", "The Los Angeles Lakers beat the Detroit Pistons without injured Marcus Reed.")
+        result = process_report(report([saved]))
+        self.assertEqual(result["articles"][0]["features"]["event"], "game")
+
+    def test_off_court_report_with_multiple_named_people_needs_review(self):
+        saved = article("NBA players Marcus Reed and Jordan Smith discuss stalker arrested at home", "")
+        result = process_report(report([saved]))
+        self.assertEqual(result["articles"][0]["decision"], "review")
+
+    def test_same_off_court_event_outside_time_window_stays_separate(self):
+        title = "NBA player Marcus Reed home after alleged stalker arrested"
+        first = article(title, "", date="2026-11-04T12:00:00Z")
+        second = article(title, "", url="https://second.com/event", date="2026-11-08T12:00:00Z")
+        saved = report([first, second])
+        saved["requested_start"] = "2026-11-03T06:00:00Z"
+        self.assertEqual(len(process_report(saved)["stories"]), 2)
+
     def test_betting_preview_is_not_injury_reporting(self):
         saved = article("Lakers vs. Pistons Prediction, Odds and Best NBA Prop Bets",
                         "The Detroit Pistons remain without Jalen Duren because of his hamstring injury.")

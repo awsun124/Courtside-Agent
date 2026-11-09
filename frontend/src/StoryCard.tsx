@@ -5,7 +5,7 @@ import { formatDate, plural, safeLink } from './format'
 import { Icon } from './Icons'
 import type { Briefing, DataMode, Story, StoryDetail } from './types'
 
-const eventLabels: Record<string, string> = { game: 'Game report', injury: 'Injury update', trade: 'Trade news', contract: 'Roster move' }
+const eventLabels: Record<string, string> = { game: 'Game report', injury: 'Injury update', trade: 'Trade news', contract: 'Roster move', league: 'League news', off_court: 'Off-court news', milestone: 'Player milestone' }
 const activityLabels: Record<string, string> = {
   search_articles: 'Looked for related reporting', retrieve_material: 'Read a saved source excerpt',
   inspect_related_stories: 'Checked related story groups', compare_previous_briefings: 'Compared earlier briefings',

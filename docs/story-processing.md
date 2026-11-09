@@ -65,3 +65,6 @@ player-only headlines, comments, coaching stories, awards, and disputes stay in
 review. Repeated games and separate developments can still be hard to distinguish
 with short excerpts. We need a larger, manually checked sample before trusting
 the groups as input to a most-covered ranking.
+
+
+The processor now uses verified feed categories as NBA context and recognizes additional event types. See [the saved article review](filter-review.md) for the changes, same-input results, and remaining limitations.

@@ -13,6 +13,7 @@ import sqlite3
 import unicodedata
 
 from scripts.validate_gdelt import canonical_url
+from .feeds import CATALOG
 
 TEAM_NAMES = {
     "hawks": "atlanta hawks", "celtics": "boston celtics", "nets": "brooklyn nets",
@@ -30,12 +31,13 @@ TEAM_NAMES = {
 AMBIGUOUS_TEAMS = {"heat", "magic", "thunder", "kings", "jazz", "bucks", "nets", "suns", "spurs", "bulls"}
 NAME_STOP_WORDS = set("the a an to for and of in on at as by from with nba nfl nhl ncaa ucla november sunday saturday monday tuesday wednesday thursday friday head coach best bets injury update points win loss game report news star does what no one this season national basketball association eastern western conference finals".split())
 NAME_STOP_WORDS.update(" ".join(TEAM_NAMES.values()).split())
+NAME_STOP_WORDS.update("rare feat historic milestone all star game first time man claiming security home says claims son matches record records".split())
 STOP_WORDS = set("the a an to for and of in on at as by from with is are was were be has have his her their its this that after before more over past out will nba says said latest news update report reports".split())
 EVENT_WORDS = {
     "injury": r"\b(injury|injured|surgery|strain|tear|torn|re evaluated|out indefinitely|remains out|ruled out|sidelined)\b",
     "trade": r"\b(trade|traded|trades|acquire|acquired|deal)\b",
     "contract": r"\b(signs|signed|signing|extension|waives|waived|contract)\b",
-    "game": r"\b(win|wins|won|victory|defeat|defeats|beat|beats|scored|scores|hold off|past cavs|over cavs)\b",
+    "game": r"\b(win|wins|won|victory|defeat|defeats|beat|beats|scored|scores|hold off|holds off|past cavs|over cavs)\b|\b(leads?|lifts?)\b.{0,70}\bpast\b",
 }
 BODY_PARTS = {"knee", "ankle", "hamstring", "thumb", "wrist", "shoulder", "foot", "hand", "back", "elbow", "calf", "hip", "finger"}
 
@@ -74,6 +76,15 @@ def find_people(text):
     return sorted(names)
 
 
+def has_nba_context(article):
+    nba_feeds = {"yahoo-nba", "espn-nba", "cbs-nba", "athletic-nba", "guardian-nba", "post-nba"}
+    for feed_id in article.get("collection_sources", []):
+        if feed_id in nba_feeds and article.get("source_url") == CATALOG[feed_id][1]:
+            return True, "NBA-specific feed"
+    text = " ".join(article.get(field) or "" for field in ("title", "description", "content_excerpt"))
+    return bool(re.search(r"\b(nba|basketball)\b", clean_text(text))), "Article text"
+
+
 def inspect_article(article):
     title = article["title"]
     description = article.get("description") or ""
@@ -90,25 +101,57 @@ def inspect_article(article):
         return "review", "Several topics, not one clear story", {}
     if re.search(r"\b(roundup|wrap|expanded glance|conference glance|sports schedule|how to watch)\b", title_text):
         return "review", "Several events or a schedule, not one clear story", {}
-    basketball_context = bool(re.search(r"\b(nba|basketball)\b", clean_text(main_text + " " + excerpt)))
+    basketball_context, context_basis = has_nba_context(article)
+    if re.search(r"\b(fantasy|waiver wire|power rankings|player grades|report card|game preview|open thread|weekly recap|week in review|takeaways|observations after|survey|predictions)\b", title_text):
+        return "review", "Fantasy, preview, opinion, or recap rather than a direct event report", {}
+    if re.search(r"\b(best|worst)\b.{0,50}\b(player|team|contract)\b", title_text):
+        return "review", "Player or team evaluation, not a reported transaction", {}
+    if re.search(r"\b(impressed|applaud|praise)\b", title_text):
+        return "review", "Reaction or commentary rather than direct event reporting", {}
+    if re.search(r"\binjury report\b", title_text) and re.search(r"\b(game|vs|at|starters)\b", title_text):
+        return "review", "Pregame availability list rather than one clear injury development", {}
     teams = find_teams(main_text, basketball_context)
-    if not teams:
-        return "review", "No clear NBA team in the headline or opening description", {}
-    event = next((kind for kind, pattern in EVENT_WORDS.items() if re.search(pattern, text)), None)
+    if re.search(r"^(should|could|would|can|what if)\b", title_text):
+        return "review", "Question or speculation rather than a specific reported development", {}
+    if re.search(r"\b(endorsement|shoe deal|sponsorship)\b", text):
+        return "review", "Commercial partnership, not a player roster transaction", {}
+    people = find_people(main_text)
+    event_key = None
+    if basketball_context and re.search(r"\bhost\b.*\bnba all star game\b", title_text):
+        year = re.search(r"\b20\d{2}\b", title_text)
+        city = re.match(r"([A-Z][a-z]+(?: [A-Z][a-z]+)?) (?:reportedly )?to host", title)
+        if year and city:
+            event_key = "all-star-host:" + year.group() + ":" + clean_text(city.group(1))
+            event = "league"
+        else:
+            return "review", "Host announcement needs a clear city and event year", {}
+    elif basketball_context and len(people) == 1 and re.search(r"\b(arrest|arrested)\b", text) and re.search(r"\b(stalker|stalking|trespass|trespassing)\b", text):
+        location = "home" if re.search(r"\b(home|house|residence)\b", text) else "arena" if re.search(r"\b(arena|stadium)\b", text) else "unspecified"
+        event, event_key = "off_court", "arrest:stalking:" + location
+    elif basketball_context and people and re.search(r"\b(matches|tied|ties|breaks|passes)\b", title_text) and re.search(r"\b(record|feat|milestone)\b", title_text):
+        event = "milestone"
+        numbers = sorted(set(re.findall(r"\b\d+\b", text)))
+        event_key = "milestone:" + ",".join(numbers) if numbers else None
+    else:
+        event = next((kind for kind, pattern in EVENT_WORDS.items() if re.search(pattern, title_text)), None)
+        if event is None:
+            event = next((kind for kind, pattern in EVENT_WORDS.items() if re.search(pattern, text)), None)
     if event is None:
-        return "review", "No clear injury, transaction, or game result in the headline or opening description", {}
+        return "review", "No specific supported event in the headline or opening description", {}
+    if not teams and event not in {"league", "off_court", "milestone"}:
+        return "review", "No clear NBA team in the headline or opening description", {}
     if event == "injury" and re.search(r"\b(questions whether|injury problems|offseason workouts|injury trends)\b", text) and not BODY_PARTS & set(text.split()):
         return "review", "General injury discussion without a specific injury development", {}
     if event == "game":
         teams = find_teams(main_text + " " + excerpt, basketball_context)
         if len(teams) != 2:
             return "review", "Game report needs two clear teams", {}
-    features = dict(event=event, teams=teams, people=find_people(main_text),
+    features = dict(event=event, teams=teams, people=people, event_key=event_key, context_basis=context_basis,
                     body_parts=sorted(BODY_PARTS & set(text.split())),
                     terms=sorted(set(text.split()) - STOP_WORDS),
                     lead=clean_text(lead), copy_excerpt=clean_text(excerpt or description)[:220],
                     game_scores=sorted({score.replace("–", "-") for score in re.findall(r"\b\d{2,3}[-–]\d{2,3}\b", main_text + " " + excerpt)}),
-                    rumor=bool(re.search(r"\b(rumor|rumors|reportedly|could|may|might|linked)\b", title_text)))
+                    rumor=bool(re.search(r"\b(rumor|rumors|reportedly|alleged|could|may|might|linked)\b", title_text)))
     return "included", "Clear NBA event in the headline or opening description", features
 
 
@@ -124,6 +167,15 @@ def same_event(left, right):
     hours = abs((parse_date(left["published_at"]) - parse_date(right["published_at"])).total_seconds()) / 3600
     if hours > (24 if first["event"] == "game" else 72):
         return False
+    if first["event"] == "league":
+        return bool(first.get("event_key") and first.get("event_key") == second.get("event_key"))
+    if first["event"] in {"off_court", "milestone"}:
+        if not first.get("people") or not second.get("people") or first["people"][0] != second["people"][0]:
+            return False
+        same_key = bool(first.get("event_key") and first.get("event_key") == second.get("event_key"))
+        if first["event"] == "off_court" and first.get("event_key") != "arrest:stalking:unspecified":
+            return same_key
+        return same_key and similarity(first["terms"], second["terms"]) >= 0.55
     if first["event"] == "game":
         if first["game_scores"] and second["game_scores"] and not set(first["game_scores"]) & set(second["game_scores"]):
             return False
@@ -202,6 +254,7 @@ def process_report(report):
                 skipped.append(dict(url=original["url"], reason="Repeated article URL"))
                 continue
             article = {**original, "canonical_url": canonical}
+            article["nba_context"], article["context_basis"] = has_nba_context(article)
             decision, reason, features = inspect_article(article)
             article.update(decision=decision, decision_reason=reason, features=features)
             articles[canonical] = article
