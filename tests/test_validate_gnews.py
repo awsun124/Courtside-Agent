@@ -9,6 +9,7 @@ from subprocess import CompletedProcess
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 from scripts.validate_gnews import SourceError, UTC, collect_articles, save_report, fetch_page, load_api_key, parse_article
 
@@ -17,13 +18,13 @@ NOW = datetime(2026, 11, 9, tzinfo=UTC)
 
 def row(index=1):
     return dict(title="Lakers announce injury update", url=f"https://example.com/{index}",
-                publishedAt="2026-11-07T12:00:00Z", source=dict(name="Example Sports", url="https://example.com"))
+                publishedAt="2026-11-08T06:00:00Z", source=dict(name="Example Sports", url="https://example.com"))
 
 
-def run(transport, max_requests=3):
-    args = Namespace(days=3, query="NBA", max_requests=max_requests, max_seconds=90, timeout=30)
+def run(transport, max_requests=3, days=1, **options):
+    args = Namespace(days=days, query="NBA", max_requests=max_requests, max_seconds=90, timeout=30)
     with redirect_stdout(io.StringIO()):
-        return collect_articles(args, "private-test-key", NOW, transport, sleep=lambda n: None)
+        return collect_articles(args, "private-test-key", NOW, transport, sleep=lambda n: None, **options)
 
 
 class GNewsTests(unittest.TestCase):
@@ -53,7 +54,7 @@ class GNewsTests(unittest.TestCase):
     def test_publication_filter_and_attribution(self):
         article = parse_article(row(), NOW - timedelta(days=3), NOW - timedelta(hours=12), 'collected')
         self.assertEqual(article['publisher_name'], 'Example Sports')
-        self.assertEqual(article['published_at'], '2026-11-07T12:00:00Z')
+        self.assertEqual(article['published_at'], '2026-11-08T06:00:00Z')
         for date in ['2026-11-01T12:00:00Z', '2026-11-09T00:00:00Z', '2026-11-07T12:00:00']:
             with self.assertRaises(ValueError):
                 parse_article({**row(), 'publishedAt': date}, NOW - timedelta(days=3), NOW - timedelta(hours=12), 'collected')
@@ -88,6 +89,59 @@ class GNewsTests(unittest.TestCase):
         bad = run(lambda *args: dict(totalArticles=1, articles=[{}]))
         self.assertEqual(len(bad['rejected_records']), 1)
         self.assertFalse(bad['complete_available_results'])
+
+    def test_three_days_get_separate_windows_before_more_pages(self):
+        queries = []
+        def transport(url, *args):
+            query = parse_qs(urlsplit(url).query)
+            queries.append(query)
+            return dict(totalArticles=50, articles=[dict(row(len(queries) * 10 + i), publishedAt=query['from'][0]) for i in range(10)])
+        result = run(transport, days=3)
+        self.assertEqual([query['page'][0] for query in queries], ['1', '1', '1'])
+        self.assertEqual(len({query['from'][0] for query in queries}), 3)
+        self.assertEqual(result['summary']['unique_urls'], 30)
+        self.assertEqual(result['summary']['reported_total'], 150)
+        self.assertFalse(result['complete_available_results'])
+        self.assertEqual(result['rejected_records'], [])
+
+    def test_small_budget_still_spans_the_entire_week(self):
+        result = run(lambda *args: dict(totalArticles=0, articles=[]), days=7)
+        windows = sorted(result['windows'], key=lambda window: window['start'])
+        self.assertEqual(windows[0]['start'], result['requested_start'])
+        self.assertEqual(windows[-1]['end'], result['searchable_end'])
+        for left, right in zip(windows, windows[1:]):
+            end = datetime.fromisoformat(left['end'].replace('Z', '+00:00'))
+            start = datetime.fromisoformat(right['start'].replace('Z', '+00:00'))
+            self.assertEqual(start - end, timedelta(microseconds=1))
+        self.assertTrue(result['complete_available_results'])
+
+    def test_second_pages_wait_until_each_window_has_been_queried(self):
+        pages = []
+        def transport(url, *args):
+            query = parse_qs(urlsplit(url).query)
+            pages.append(int(query['page'][0]))
+            return dict(totalArticles=100, articles=[dict(row(len(pages) * 10 + i), publishedAt=query['from'][0]) for i in range(10)])
+        run(transport, max_requests=5, days=3)
+        self.assertEqual(pages, [1, 1, 1, 2, 2])
+
+    def test_article_outside_its_window_is_rejected(self):
+        result = run(lambda *args: dict(totalArticles=1, articles=[row()]), days=3)
+        self.assertGreater(len(result['rejected_records']), 0)
+        self.assertFalse(result['complete_available_results'])
+
+    def test_failed_window_keeps_earlier_results_and_unknown_total(self):
+        calls = []
+        def transport(url, *args):
+            calls.append(url)
+            if len(calls) == 2:
+                raise SourceError('GNews rate limit')
+            query = parse_qs(urlsplit(url).query)
+            return dict(totalArticles=1, articles=[dict(row(), publishedAt=query['from'][0])])
+        result = run(transport, days=3)
+        self.assertEqual(len(result['articles']), 1)
+        self.assertEqual(len(calls), 2)
+        self.assertIsNone(result['summary']['reported_total'])
+        self.assertFalse(result['complete_available_results'])
 
     def test_exports_redact_key_and_preserve_original_urls(self):
         r = run(lambda *args: dict(totalArticles=1, articles=[row()]))

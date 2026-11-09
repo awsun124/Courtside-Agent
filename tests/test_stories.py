@@ -2,6 +2,7 @@
 from contextlib import closing
 from copy import deepcopy
 from pathlib import Path
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -29,6 +30,13 @@ def injury(**changes):
 
 
 class StoryTests(unittest.TestCase):
+    def test_reviewed_news_examples(self):
+        cases = json.loads((Path(__file__).parent / "fixtures/news_review.json").read_text())
+        for case in cases:
+            with self.subTest(title=case["title"]):
+                result = process_report(report([article(case["title"], case["description"])]))
+                self.assertEqual(result["articles"][0]["decision"], case["decision"])
+
     def test_betting_preview_is_not_injury_reporting(self):
         saved = article("Lakers vs. Pistons Prediction, Odds and Best NBA Prop Bets",
                         "The Detroit Pistons remain without Jalen Duren because of his hamstring injury.")

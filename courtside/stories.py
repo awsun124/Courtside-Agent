@@ -84,6 +84,10 @@ def inspect_article(article):
     text = clean_text(main_text)
     if re.search(r"\b(prop bets?|best bets?|betting odds|promo code|referral code|prediction odds|predictions odds|sportsbook)\b", text) or "/betting/" in article["url"]:
         return "excluded", "Betting preview or promotion", {}
+    if re.search(r"\b(relive|on this day|look back|rewind|flashback)\b", title_text):
+        return "review", "Historical retrospective, not evidence of a recent event", {}
+    if re.search(r"\b(and more|a lot more)\b", text):
+        return "review", "Several topics, not one clear story", {}
     if re.search(r"\b(roundup|wrap|expanded glance|conference glance|sports schedule|how to watch)\b", title_text):
         return "review", "Several events or a schedule, not one clear story", {}
     basketball_context = bool(re.search(r"\b(nba|basketball)\b", clean_text(main_text + " " + excerpt)))
@@ -93,6 +97,8 @@ def inspect_article(article):
     event = next((kind for kind, pattern in EVENT_WORDS.items() if re.search(pattern, text)), None)
     if event is None:
         return "review", "No clear injury, transaction, or game result in the headline or opening description", {}
+    if event == "injury" and re.search(r"\b(questions whether|injury problems|offseason workouts|injury trends)\b", text) and not BODY_PARTS & set(text.split()):
+        return "review", "General injury discussion without a specific injury development", {}
     if event == "game":
         teams = find_teams(main_text + " " + excerpt, basketball_context)
         if len(teams) != 2:

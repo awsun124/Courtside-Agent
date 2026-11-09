@@ -100,11 +100,21 @@ def collect_articles(args, api_key, now, transport=fetch_page, clock=time.monoto
     deadline = clock() + args.max_seconds
     attempts, articles, rejected, notices = [], {}, [], []
     retrieved_count = duplicate_urls = 0
-    total_articles = None
-    all_pages_fetched = False
+    window_count = min(args.days, args.max_requests)
+    boundaries = [start + (end - start) * index / window_count for index in range(window_count + 1)]
+    boundaries = [value.replace(microsecond=0) for value in boundaries]
+    windows = [dict(start=format_time(boundaries[index]),
+                    end=format_time(boundaries[index + 1] if index == window_count - 1 else boundaries[index + 1] - timedelta(microseconds=1)),
+                    next_page=1, retrieved_rows=0, reported_total=None, complete=False, stopped=False)
+               for index in reversed(range(window_count))]
     stop_reason = "request limit reached"
-    for page in range(1, args.max_requests + 1):
-        if page > 1:
+    for request_number in range(args.max_requests):
+        available = [window for window in windows if not window["complete"] and not window["stopped"]]
+        if not available:
+            stop_reason = "all reported matches downloaded" if all(w["complete"] for w in windows) else "Some windows returned incomplete results"
+            break
+        window = min(available, key=lambda item: item["next_page"])
+        if request_number:
             if deadline - clock() <= 3:
                 stop_reason = "time limit reached"
                 break
@@ -113,12 +123,13 @@ def collect_articles(args, api_key, now, transport=fetch_page, clock=time.monoto
         if remaining <= 0.5:
             stop_reason = "time limit reached"
             break
+        page = window["next_page"]
         url = ENDPOINT + "?" + urlencode(dict(q=args.query, lang="en", max=10, page=page,
                                                 sortby="publishedAt", nullable="description,content,image",
-                                                truncate="content", **{"from": format_time(start), "to": format_time(end)}))
-        attempt = dict(page=page, url=url)
+                                                truncate="content", **{"from": window["start"], "to": window["end"]}))
+        attempt = dict(page=page, url=url, window_start=window["start"], window_end=window["end"])
         attempts.append(attempt)
-        print(f"GNews page {page}/{args.max_requests}", flush=True)
+        print(f"GNews request {request_number + 1}/{args.max_requests}: {window['start']} to {window['end']}, page {page}", flush=True)
         try:
             response_data = transport(url, api_key, min(args.timeout, remaining - 0.3))
         except SourceError as error:
@@ -126,30 +137,31 @@ def collect_articles(args, api_key, now, transport=fetch_page, clock=time.monoto
             stop_reason = str(error)
             break
         rows = response_data["articles"]
-        total_articles = response_data["totalArticles"]
+        window["reported_total"] = response_data["totalArticles"]
+        window["retrieved_rows"] += len(rows)
+        window["next_page"] += 1
         retrieved_count += len(rows)
-        attempt.update(status="ok", count=len(rows), total_articles=total_articles)
+        attempt.update(status="ok", count=len(rows), total_articles=window["reported_total"])
         notices.append({k: response_data[k] for k in ("information", "articlesRemovedFromResponse") if k in response_data})
         for raw_article in rows:
             try:
-                article = parse_article(raw_article, start, end, format_time(datetime.now(UTC)))
+                article = parse_article(raw_article, datetime.fromisoformat(window["start"].replace("Z", "+00:00")),
+                                        datetime.fromisoformat(window["end"].replace("Z", "+00:00")),
+                                        format_time(datetime.now(UTC)))
                 canonical = article["canonical_url"]
                 if canonical in articles:
                     duplicate_urls += 1
                 else:
                     articles[canonical] = article
             except (ValueError, TypeError) as error:
-                rejected.append(dict(reason=str(error)))
-        if retrieved_count >= total_articles:
-            all_pages_fetched = True
-            stop_reason = "all reported matches downloaded"
-            break
-        if len(rows) < 10:
-            stop_reason = "GNews returned fewer articles than its total suggested"
-            break
-        if retrieved_count >= 1000:
-            stop_reason = "GNews's 1,000-article limit reached"
-            break
+                rejected.append(dict(reason=str(error), window_start=window["start"], window_end=window["end"]))
+        window["complete"] = window["retrieved_rows"] >= window["reported_total"]
+        if not window["complete"] and (len(rows) < 10 or window["retrieved_rows"] >= 1000):
+            window["stopped"] = True
+    all_pages_fetched = all(window["complete"] for window in windows)
+    if all_pages_fetched:
+        stop_reason = "all reported matches downloaded"
+    total_articles = sum(window["reported_total"] for window in windows) if all(window["reported_total"] is not None for window in windows) else None
     saved_articles = list(articles.values())
     groups = defaultdict(list)
     for article in saved_articles:
@@ -159,6 +171,7 @@ def collect_articles(args, api_key, now, transport=fetch_page, clock=time.monoto
                 requested_start=format_time(start), requested_end=format_time(now), searchable_end=format_time(end),
                 freshness_delay_hours=12, complete_available_results=complete, stop_reason=stop_reason,
                 max_requests=args.max_requests, max_seconds=args.max_seconds,
+                collection_strategy="balanced time windows, then round-robin pagination", windows=windows,
                 attempts=attempts, provider_notices=notices, rejected_records=rejected,
                 articles=saved_articles, possible_duplicate_titles=[dict(title=k, urls=v) for k, v in groups.items() if len(v) > 1],
                 summary=dict(retrieved_rows=retrieved_count, unique_urls=len(saved_articles), reported_total=total_articles,
@@ -192,6 +205,14 @@ def save_report(report, output, api_key):
              "Publisher labels and dates are supplied by GNews. Independent reporting and",
              "publication dates are not verified. These are discovery results, not ranked",
              "stories. The latest 12 hours are unavailable on the free plan.", "", "## Review sample", ""]
+    window_lines = ["## Collection windows", "", "Each window gets a first page before another window gets more pages.", "",
+                    "| From | Through | Requests | Rows | Reported matches | Complete |",
+                    "| --- | --- | --- | ---: | ---: | --- |"]
+    for window in report.get("windows", []):
+        requests = sum(attempt.get("window_start") == window["start"] for attempt in report["attempts"])
+        window_lines.append(f"| {window['start']} | {window['end']} | {requests} | {window['retrieved_rows']} | {window['reported_total']} | {window['complete']} |")
+    if report.get("windows"):
+        lines[-2:-2] = window_lines + [""]
     lines += [f"- {a['relevance']}: {a['title']} ({a['publisher_name']}) {a['url']}" for a in report["articles"][:10]]
     (output / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     fields = ["title", "url", "canonical_url", "publisher_name", "publisher_host", "source_url",
