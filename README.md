@@ -106,6 +106,26 @@ The rules do not resolve publisher ownership or original reporting. Story IDs
 are repeatable for the same input but are not yet matched across briefings.
 See [story processing notes](docs/story-processing.md) for the current limits.
 
+## Rank story groups
+
+```sh
+python3 -m courtside.ranking --settings config/ranking.json
+```
+
+Scores use 50 percent coverage, 30 percent momentum, and 20 percent freshness.
+Change the weights, periods, evidence minimum, and publisher aliases in
+`config/ranking.json`. Results go to `artifacts/ranking/ranking.md` and
+`ranking.json`. Briefing history and score breakdowns are saved in SQLite.
+
+The current partial sample is labeled experimental. Likely copies count once,
+and the default needs two independent publisher groups to select a story.
+All five current candidates fall below that minimum. Their provisional scores
+are still shown with explanations. Freshness stays zero until a substantive
+development has reviewed evidence. The script never treats a newer copy as a
+new development or fills ten slots without enough evidence.
+
+See [ranking methodology](docs/ranking.md) for formulas and limitations.
+
 ## Before publishing
 
 Confirm the news provider's plan and content permissions before publishing the

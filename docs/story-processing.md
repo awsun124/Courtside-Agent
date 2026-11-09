@@ -38,8 +38,9 @@ similar wording does not prove it. The estimated reporting group count never
 exceeds the number of publisher labels. Ownership and source attribution still
 need a fuller review before numerical ranking.
 
-Rumor wording in headlines stays labeled. All groups require review and remain
-unranked. No generated summaries are presented as verified news.
+Rumor wording in headlines stays labeled. All groups require review. Grouping
+does not assign ranks. The separate [ranking step](ranking.md) scores the groups
+and labels missing evidence. No generated summaries are presented as verified news.
 
 ## SQLite
 
@@ -47,11 +48,13 @@ unranked. No generated summaries are presented as verified news.
 - `processing_runs` keeps each input window, completeness flag, decisions, and results.
 - `story_clusters` keeps the story candidates for each run.
 - `story_articles` links groups to their articles.
+- `briefings` keeps ranking settings, warnings, and each briefing snapshot.
+- `story_scores` keeps every candidate's score and evidence breakdown.
 
 Saving another run updates matching article URLs and adds a separate history
 entry. Each run keeps its own article snapshot in its saved results. Writes use
-one transaction, so a failed save does not leave half a run behind. Briefings,
-deterministic scores, and investigation logs come in later stages.
+one transaction, so a failed save does not leave half a run behind. Ranking adds
+briefing history and deterministic scores. Investigation logs come later.
 
 ## Current limitations
 

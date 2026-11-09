@@ -36,6 +36,22 @@ CREATE TABLE IF NOT EXISTS story_articles (
     FOREIGN KEY (run_id, story_id) REFERENCES story_clusters(run_id, story_id),
     PRIMARY KEY (run_id, story_id, article_id)
 );
+CREATE TABLE IF NOT EXISTS briefings (
+    id INTEGER PRIMARY KEY,
+    processing_run_id INTEGER REFERENCES processing_runs(id),
+    as_of TEXT NOT NULL,
+    experimental INTEGER NOT NULL,
+    briefing_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS story_scores (
+    briefing_id INTEGER NOT NULL REFERENCES briefings(id),
+    story_id TEXT NOT NULL,
+    rank INTEGER,
+    score REAL NOT NULL,
+    eligible INTEGER NOT NULL,
+    score_json TEXT NOT NULL,
+    PRIMARY KEY (briefing_id, story_id)
+);
 """
 
 
@@ -62,3 +78,22 @@ def save_run(result, database):
                 for url in story["article_urls"]:
                     connection.execute("INSERT INTO story_articles VALUES (?, ?, ?)", (run_id, story["id"], article_ids[url]))
     return run_id
+
+
+def save_briefing(briefing, database):
+    database = Path(database)
+    database.parent.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(database)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.executescript(SCHEMA)
+        run_id = briefing.get("processing_run_id")
+        if run_id is not None and connection.execute("SELECT id FROM processing_runs WHERE id = ?", (run_id,)).fetchone() is None:
+            raise ValueError("Processing run not found in this database. Process the articles into the same database first.")
+        with connection:
+            briefing_id = connection.execute(
+                "INSERT INTO briefings (processing_run_id, as_of, experimental, briefing_json) VALUES (?, ?, ?, ?)",
+                (run_id, briefing["as_of"], briefing["experimental"], json.dumps(briefing))).lastrowid
+            for story in briefing["candidates"]:
+                connection.execute("INSERT INTO story_scores VALUES (?, ?, ?, ?, ?, ?)",
+                                   (briefing_id, story["id"], story["rank"], story["score"], story["eligible"], json.dumps(story)))
+    return briefing_id

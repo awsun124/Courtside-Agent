@@ -1,0 +1,13 @@
+{
+  "coverage_weight": 0.5,
+  "momentum_weight": 0.3,
+  "freshness_weight": 0.2,
+  "coverage_target": 8,
+  "recent_hours": 24,
+  "minimum_baseline_hours": 24,
+  "momentum_minimum_reports": 3,
+  "freshness_half_life_hours": 24,
+  "minimum_publishers": 2,
+  "limit": 10,
+  "publisher_aliases": {}
+}
