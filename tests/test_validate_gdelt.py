@@ -7,11 +7,13 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+from subprocess import CompletedProcess
 from contextlib import redirect_stdout, redirect_stderr
 from urllib.parse import parse_qs, urlsplit
 
 from scripts.validate_gdelt import (
-    UTC, SourceError, canonical_url, collect, decode_response, export, normalize,
+    UTC, SourceError, canonical_url, collect, decode_response, export, fetch, normalize,
     title_key, triage, windows,
 )
 
@@ -47,6 +49,32 @@ def run(transport, timer=None, **overrides):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_transport_reports_tls_stall_and_uses_requested_timeout(self):
+        response = CompletedProcess([], 28, '\n000 0.003 0.049 0.000 30.0', 'curl: (28) SSL connection timeout\n')
+        with patch('scripts.validate_gdelt.subprocess.run', return_value=response) as command:
+            with self.assertRaises(SourceError) as error:
+                fetch('https://api.gdeltproject.org/', 45, connect_timeout=30)
+        self.assertEqual(error.exception.details['failure_phase'], 'tls')
+        self.assertEqual(error.exception.details['http_status'], 0)
+        arguments = command.call_args.args[0]
+        self.assertEqual(arguments[arguments.index('--connect-timeout') + 1], '30')
+        self.assertNotIn('--insecure', arguments)
+
+    def test_transport_parses_realistic_success_output(self):
+        response = CompletedProcess([], 0, '{"articles":[]}\n200 0.01 0.05 0.10 0.25', '')
+        with patch('scripts.validate_gdelt.subprocess.run', return_value=response):
+            self.assertEqual(fetch('https://api.gdeltproject.org/', 20), [])
+
+    def test_rate_limit_cooldown_applies_to_next_window(self):
+        timer, calls = FakeTime(), []
+        def transport(url, timeout):
+            calls.append(timer.now)
+            if len(calls) == 1:
+                return decode_response(200, 'Please limit requests to one every 5 seconds')
+            return []
+        run(transport, timer, days=2, retries=0)
+        self.assertGreaterEqual(calls[1] - calls[0], 30)
+
     def test_rate_limit_even_when_http_success(self):
         for status, body in [(200, "Please limit requests to one every 5 seconds"), (429, "busy")]:
             with self.assertRaises(SourceError) as error:

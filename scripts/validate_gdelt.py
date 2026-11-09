@@ -57,14 +57,16 @@ def triage(title):
 
 
 class SourceError(Exception):
-    def __init__(self, message, retryable=False):
+    def __init__(self, message, retryable=False, details=None, cooldown=0):
         super().__init__(message)
         self.retryable = retryable
+        self.details = details or {}
+        self.cooldown = cooldown
 
 
 def decode_response(status, body):
     if status == 429 or "please limit requests" in body.lower():
-        raise SourceError("GDELT rate limit", retryable=True)
+        raise SourceError("GDELT rate limit", retryable=True, cooldown=30)
     if status >= 500:
         raise SourceError(f"GDELT HTTP {status}", retryable=True)
     if status != 200:
@@ -78,22 +80,40 @@ def decode_response(status, body):
     return data["articles"]
 
 
-def fetch(url, timeout):
+def fetch(url, timeout, connect_timeout=20):
     try:
         result = subprocess.run(
-            ["curl", "--silent", "--show-error", "--max-time", str(timeout),
-             "--connect-timeout", str(min(10, timeout)), "--max-filesize", "10000000",
-             "--write-out", "\n%{http_code}", url],
+            ["curl", "--disable", "--silent", "--show-error", "--max-time", str(timeout),
+             "--connect-timeout", str(min(connect_timeout, timeout)), "--max-filesize", "10000000",
+             "--write-out", "\n%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_total}", url],
             capture_output=True, text=True, timeout=timeout + 0.2)
     except subprocess.TimeoutExpired:
         raise SourceError("Request timed out", retryable=True) from None
     except FileNotFoundError:
         raise SourceError("curl is required but not installed") from None
+    try:
+        body, metadata = result.stdout.rsplit("\n", 1)
+        status, dns, tcp, tls, total = metadata.split()
+        details = dict(http_status=int(status), dns_seconds=float(dns),
+                       tcp_seconds=float(tcp), tls_seconds=float(tls), total_seconds=float(total))
+    except (ValueError, TypeError):
+        raise SourceError(f"curl did not return connection metadata: {result.stderr[:180].strip()}") from None
     if result.returncode:
-        raise SourceError(f"curl error {result.returncode}: {result.stderr[:180]}",
-                          retryable=result.returncode in {5, 6, 7, 18, 28, 52, 56})
-    body, status = result.stdout.rsplit("\n", 1)
-    return decode_response(int(status), body)
+        phase = "transport"
+        if result.returncode == 6:
+            phase = "dns"
+        elif result.returncode == 28:
+            phase = "response" if float(tls) else "tls" if float(tcp) else "connection"
+        elif result.returncode == 60:
+            phase = "certificate"
+        details["failure_phase"] = phase
+        raise SourceError(f"{phase} failure: {result.stderr[:180].strip()}",
+                          retryable=result.returncode in {5, 6, 7, 18, 28, 52, 56}, details=details)
+    try:
+        return decode_response(int(status), body)
+    except SourceError as error:
+        error.details.update(details)
+        raise
 
 
 def windows(start, end, hours):
@@ -122,10 +142,14 @@ def normalize(raw, collected_at, start, end):
                 relevance=relevance, relevance_reason=reason)
 
 
-def collect(args, end, transport=fetch, clock=time.monotonic, sleep=time.sleep):
+def collect(args, end, transport=None, clock=time.monotonic, sleep=time.sleep):
+    connect_timeout = getattr(args, "connect_timeout", 20)
+    if transport is None:
+        transport = lambda url, timeout: fetch(url, timeout, connect_timeout)
     start = end - timedelta(days=args.days)
     pending = deque(windows(start, end, args.window_hours))
     deadline, last_request = clock() + args.max_seconds, None
+    next_allowed = 0
     attempts, intervals, articles, rejected = [], [], {}, []
     duplicate_urls = 0
     while pending:
@@ -138,6 +162,7 @@ def collect(args, end, transport=fetch, clock=time.monotonic, sleep=time.sleep):
         url = ENDPOINT + "?" + urlencode(params)
         for retry in range(args.retries + 1):
             delay = 0 if last_request is None else max(0, last_request + args.interval * (2 ** retry) - clock())
+            delay = max(delay, next_allowed - clock())
             if len(attempts) >= args.max_requests or deadline - clock() <= delay + 1:
                 break
             if delay:
@@ -168,6 +193,8 @@ def collect(args, end, transport=fetch, clock=time.monotonic, sleep=time.sleep):
                 break
             except SourceError as error:
                 attempt.update(status="failed", error=str(error))
+                attempt["connection"] = error.details
+                next_allowed = clock() + error.cooldown
                 interval.update(status="failed", error=str(error))
                 print(f"  {error}", file=sys.stderr, flush=True)
                 if not error.retryable:
@@ -182,7 +209,7 @@ def collect(args, end, transport=fetch, clock=time.monotonic, sleep=time.sleep):
     incomplete = [x for x in intervals if x["status"] not in {"ok", "split"}]
     return dict(mode="live", query=args.query, window_start=iso(start), window_end=iso(end),
                 generated_at=iso(datetime.now(UTC)), complete_query_windows=not incomplete and not rejected,
-                limits={k: getattr(args, k) for k in ("max_requests", "max_seconds", "timeout", "interval", "retries", "max_records")},
+                limits={**{k: getattr(args, k) for k in ("max_requests", "max_seconds", "timeout", "interval", "retries", "max_records")}, "connect_timeout": connect_timeout},
                 attempts=attempts, intervals=intervals, rejected_records=rejected, articles=values,
                 summary=dict(unique_urls=len(values), distinct_source_hosts=len({a["publisher_host"] for a in values}),
                              repeated_url_observations=duplicate_urls, possible_duplicate_title_groups=len(duplicates),
@@ -248,12 +275,13 @@ def main():
     parser.add_argument("--max-requests", type=int, default=14)
     parser.add_argument("--max-seconds", type=float, default=180)
     parser.add_argument("--timeout", type=float, default=20)
+    parser.add_argument("--connect-timeout", type=float, default=20)
     parser.add_argument("--interval", type=float, default=6)
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--output", type=Path, default=Path("artifacts/gdelt-validation"))
     args = parser.parse_args()
     if not (0.25 <= args.window_hours <= 24 and 1 <= args.max_records <= 250 and
-            args.max_requests > 0 and args.max_seconds >= 1 and args.timeout >= 1 and
+            args.max_requests > 0 and args.max_seconds >= 1 and args.timeout >= 1 and args.connect_timeout >= 1 and
             args.interval >= 6 and 0 <= args.retries <= 3 and args.query.strip()):
         parser.error("Require 0.25–24 window hours, 1–250 records, positive budgets, interval >=6, retries 0–3, and a query")
     report = collect(args, datetime.now(UTC).replace(microsecond=0))
