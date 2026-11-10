@@ -18,14 +18,22 @@ def corroboration_query(articles, available_end):
         if parse_date(article["published_at"]) > available_end:
             continue
         decision, _, features = inspect_article(article)
-        if decision == "included" and features["event"] == "game":
+        if decision == "included" and features["event"] in {"game", "injury"}:
             candidates.append({**article, "canonical_url": canonical_url(article["url"]), "features": features})
     groups = group_articles(candidates)
     for group in sorted(groups, key=lambda story: story["latest_published_at"], reverse=True):
         if group["reporting_groups"] != 1:
             continue
         article = next(article for article in candidates if article["canonical_url"] in group["article_urls"])
-        return " ".join(team.rsplit(" ", 1)[-1] for team in article["features"]["teams"])
+        features = article["features"]
+        if features["event"] == "game":
+            return " ".join(team.rsplit(" ", 1)[-1] for team in features["teams"])
+        for article in sorted(candidates, key=lambda item: item["published_at"], reverse=True):
+            if article["canonical_url"] not in group["article_urls"]:
+                continue
+            features = article["features"]
+            if len(features["subjects"]) == 1 and len(features["body_parts"]) == 1:
+                return " ".join([features["subjects"][0], features["body_parts"][0], "injury"])
     return None
 
 

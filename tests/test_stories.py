@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from courtside.stories import process_report
+from courtside.ranking import rank_stories
 from courtside.storage import save_run
 
 
@@ -279,6 +280,47 @@ class StoryTests(unittest.TestCase):
             with self.subTest(title=title):
                 result = process_report(report([article(title, "A reaction to recent NBA trade news.")]))
                 self.assertEqual(result['articles'][0]['decision'], 'review')
+
+    def test_injury_absence_and_return_stay_connected_with_dated_evidence(self):
+        articles = [article("Lakers rule Marcus Reed out with ankle injury", "Marcus Reed has an NBA ankle sprain.", date="2026-11-06T12:00:00Z"),
+                    article("Marcus Reed remains out for Lakers with ankle sprain", "The NBA Lakers are without Marcus Reed.", url="https://second.com/update", publisher="Second Sports", date="2026-11-07T12:00:00Z"),
+                    article("Marcus Reed cleared to play after ankle injury", "Marcus Reed is available for the NBA matchup against the Hawks.", url="https://third.com/return", publisher="Third Sports")]
+        result = process_report(report(articles))
+        self.assertEqual(len(result['stories']), 1)
+        self.assertEqual(result['stories'][0]['title'], articles[-1]['title'])
+        story = rank_stories(result)['stories'][0]
+        self.assertEqual([update['availability'] for update in story['injury_updates']], ['unavailable', 'unavailable', 'available'])
+        self.assertEqual([update['url'] for update in story['injury_updates']], [item['url'] for item in articles])
+        self.assertEqual(story['breakdown']['freshness']['points'], 0)
+
+    def test_opposite_sides_and_distant_injury_reports_stay_separate(self):
+        first = article("Marcus Reed has left ankle injury for Lakers", "An NBA injury update.", date="2026-11-04T12:00:00Z")
+        second = article("Marcus Reed has left ankle injury for Lakers", "An NBA injury update.", url="https://second.com/left")
+        third = article("Marcus Reed has right ankle injury for Lakers", "An NBA injury update.", url="https://third.com/right")
+        saved = report([first, second, third])
+        saved['requested_start'] = '2026-11-03T06:00:00Z'
+        self.assertEqual(len(process_report(saved)['stories']), 3)
+
+    def test_restricted_injury_reports_do_not_get_derived_availability_updates(self):
+        saved = article("Marcus Reed ruled out for Lakers with ankle injury", "An NBA ankle injury update.")
+        saved['investigation_allowed'] = False
+        story = rank_stories(process_report(report([saved])))['candidates'][0]
+        self.assertEqual(story['injury_updates'], [])
+
+    def test_uncertain_and_negated_availability_are_not_a_confirmed_return(self):
+        cases = [('not ruled out', 'uncertain'), ('not yet cleared to play', 'unavailable'),
+                 ('not expected to play', 'unavailable'), ('not yet available', 'unavailable'),
+                 ('expected to return', 'uncertain'), ('questionable', 'uncertain')]
+        for phrase, expected in cases:
+            with self.subTest(phrase=phrase):
+                saved = article(f"Marcus Reed {phrase} for Lakers after ankle injury", "An NBA ankle injury update.")
+                features = process_report(report([saved]))['articles'][0]['features']
+                self.assertEqual(features['injury_availability'], expected)
+
+    def test_return_timeline_does_not_establish_availability(self):
+        saved = article("Marcus Reed ankle injury return timeline for Lakers", "An NBA injury discussion.")
+        features = process_report(report([saved]))['articles'][0]['features']
+        self.assertIsNone(features['injury_availability'])
 
     def test_dates_and_repeated_urls_are_checked_again(self):
         result = process_report(report([injury(), injury(url="https://example.com/story?utm_source=feed"),

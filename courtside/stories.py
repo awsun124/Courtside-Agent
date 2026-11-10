@@ -33,10 +33,10 @@ NAME_STOP_WORDS = set("the a an to for and of in on at as by from with nba nfl n
 NAME_STOP_WORDS.update(" ".join(TEAM_NAMES.values()).split())
 NAME_STOP_WORDS.update("rare feat historic milestone all star game first time man claiming security home says claims son matches record records".split())
 NAME_STOP_WORDS.update("get major boost ahead announce named receive unwelcome unsettling scoring streak personal tribute biggest losers after before following amid marquee matchup against latest clash scare trade signing waiver".split())
-NAME_STOP_WORDS.update("sign signs signed waive waives waived acquire acquires acquired give gives out questionable doubtful returns ruled sidelined".split())
+NAME_STOP_WORDS.update("sign signs signed waive waives waived acquire acquires acquired give gives out questionable doubtful return returns ruled sidelined cleared".split())
 STOP_WORDS = set("the a an to for and of in on at as by from with is are was were be has have his her their its this that after before more over past out will nba says said latest news update report reports".split())
 EVENT_WORDS = {
-    "injury": r"\b(injury|injured|surgery|strain|tear|torn|re evaluated|out indefinitely|remains out|ruled out|sidelined)\b",
+    "injury": r"\b(injury|injured|surgery|strain|sprain|tightness|tear|torn|re evaluated|out indefinitely|remains out|ruled out|sidelined)\b",
     "trade": r"\b(trade|traded|trades|acquire|acquired|deal)\b",
     "contract": r"\b(sign|signs|signed|signing|extension|waive|waives|waived|contract)\b",
     "game": r"\b(win|wins|won|victory|defeat|defeats|beat|beats|scored|scores|hold off|holds off|past cavs|over cavs)\b|\b(leads?|lifts?)\b.{0,70}\bpast\b",
@@ -82,6 +82,18 @@ def find_event(text):
     matches = [(match.start(), kind) for kind, pattern in EVENT_WORDS.items()
                if (match := re.search(pattern, text))]
     return min(matches)[1] if matches else None
+
+
+def reported_availability(text):
+    if re.search(r"\b(not (?:yet )?available|not (?:yet )?cleared to play|not expected to play)\b", text):
+        return "unavailable"
+    if re.search(r"\b(questionable|doubtful|game time decision|not (?:yet )?ruled out|not (?:yet )?off the injury report|expected to (?:return|play)|could return|may return|might return|hopes to return)\b", text):
+        return "uncertain"
+    if re.search(r"\b(unavailable|out|sidelined|will miss|will be without)\b", text):
+        return "unavailable"
+    if re.search(r"\b(off (?:the )?injury report|cleared to play|available|will play|returns|has returned|will return|back in (?:the )?lineup)\b", text):
+        return "available"
+    return None
 
 
 def has_nba_context(article):
@@ -173,6 +185,12 @@ def inspect_article(article):
         other_people = [lead_text.index(person) for person in lead_people if person not in subjects and person in lead_text]
         if other_people:
             injury_text = title_text + " " + lead_text[:min(other_people)]
+    injury_availability = None
+    injury_sides = []
+    if event == "injury":
+        injury_availability = reported_availability(clean_text(primary_title)) or reported_availability(injury_text)
+        injury_sides = sorted({match.group(1) for match in re.finditer(
+            r"\b(left|right)\s+(?:lower\s+|upper\s+)?(?:" + "|".join(sorted(BODY_PARTS)) + r")\b", injury_text)})
     transaction_action = None
     if event == "contract":
         primary_text = clean_text(primary_title)
@@ -187,6 +205,7 @@ def inspect_article(article):
         if len(teams) != 2:
             return "review", "Game report needs two clear teams", {}
     features = dict(event=event, teams=teams, people=people, subjects=subjects, transaction_action=transaction_action,
+                    injury_availability=injury_availability, injury_sides=injury_sides,
                     event_key=event_key, context_basis=context_basis,
                     body_parts=sorted(BODY_PARTS & set(injury_text.split())),
                     terms=sorted(set(text.split()) - STOP_WORDS),
@@ -227,6 +246,13 @@ def same_event(left, right):
         return bool(set(first["people"]) & set(second["people"])) or similarity(first["terms"], second["terms"]) >= 0.45
     if not set(first.get("subjects", first["people"])) & set(second.get("subjects", second["people"])):
         return False
+    if first["event"] == "injury":
+        if first.get("injury_sides") and second.get("injury_sides") and first["injury_sides"] != second["injury_sides"]:
+            return False
+        if first["body_parts"] and second["body_parts"]:
+            return first["body_parts"] == second["body_parts"]
+        if not set(first["teams"]) & set(second["teams"]):
+            return False
     if first["event"] == "contract":
         first_action, second_action = first.get("transaction_action"), second.get("transaction_action")
         if first_action and second_action and first_action != second_action:
@@ -263,7 +289,11 @@ def group_articles(articles):
             else:
                 copy_groups.append([article])
         story_id = hashlib.sha256(group[0]["canonical_url"].encode()).hexdigest()[:16]
-        stories.append(dict(id=story_id, title=group[0]["title"], event=group[0]["features"]["event"],
+        title_article = group[0]
+        if group[0]["features"]["event"] == "injury":
+            updates = [article for article in group if article["features"].get("injury_availability")]
+            title_article = updates[-1] if updates else group[-1]
+        stories.append(dict(id=story_id, title=title_article["title"], event=group[0]["features"]["event"],
                             first_published_at=group[0]["published_at"], latest_published_at=group[-1]["published_at"],
                             article_urls=[article["canonical_url"] for article in group],
                             publishers=sorted({article["publisher_name"] for article in group}),

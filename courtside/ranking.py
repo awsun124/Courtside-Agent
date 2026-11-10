@@ -141,11 +141,18 @@ def score_story(story, article_index, window_start, window_end, as_of, settings)
     points = dict(coverage=100 * settings.coverage_weight * coverage,
                   momentum=100 * settings.momentum_weight * momentum,
                   freshness=100 * settings.freshness_weight * freshness)
+    injury_updates = []
+    if story["event"] == "injury" and not any(article.get("investigation_allowed") is False for article in evidence.values()):
+        for article in sorted(evidence.values(), key=lambda item: (parse_date(item["published_at"]), item["canonical_url"])):
+            availability = article.get("features", {}).get("injury_availability")
+            if availability:
+                injury_updates.append(dict(title=article["title"], availability=availability,
+                    published_at=article["published_at"], publisher=article["publisher_name"], url=article["url"]))
     return dict(id=story["id"], title=story["title"], event=story["event"], rank=None,
                 score=sum(points.values()), eligible=not reasons, exclusion_reasons=reasons,
                 publishers=sorted({article["publisher_name"] for article in evidence.values()}),
                 evidence_urls=sorted(article["url"] for article in evidence.values()),
-                reporting_groups=groups, has_rumor=bool(story.get("has_rumor")),
+                reporting_groups=groups, injury_updates=injury_updates, has_rumor=bool(story.get("has_rumor")),
                 needs_review=bool(story.get("needs_review", True)),
                 breakdown=dict(
                     coverage=dict(score=coverage, points=points["coverage"], independent_publishers=publisher_count,

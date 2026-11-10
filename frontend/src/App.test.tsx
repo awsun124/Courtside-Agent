@@ -154,6 +154,28 @@ describe('Court Side dashboard', () => {
     expect(within(groups).queryByText('Reporting group 3')).toBeNull()
   })
 
+  it('shows dated injury reports without presenting an earlier absence as the latest status', async () => {
+    const latest = makeLatest()
+    const story = latest.briefing!.stories[0]
+    story.event = 'injury'
+    story.title = 'Marcus Reed cleared to play after ankle injury'
+    story.injury_updates = [
+      { title: 'Marcus Reed ruled out with ankle injury', availability: 'unavailable',
+        published_at: '2026-11-08T10:00:00Z', publisher: 'First Sports', url: 'https://first.example.com/injury' },
+      { title: story.title, availability: 'available',
+        published_at: '2026-11-09T10:00:00Z', publisher: 'Second Sports', url: 'https://second.example.com/return' },
+    ]
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: story.title })
+    await userEvent.click(screen.getByText('Injury updates'))
+    const updates = screen.getByText('Injury updates').closest('details')!
+    expect(within(updates).getByText('Reported unavailable')).toBeTruthy()
+    expect(within(updates).getByText('Reported available')).toBeTruthy()
+    expect(within(updates).getByRole('link', { name: story.title }).getAttribute('href')).toBe('https://second.example.com/return')
+    expect(within(updates).getByText(/Availability inferred from saved headlines and excerpts/)).toBeTruthy()
+  })
+
   it('attributes fallback links using their reporting groups instead of array positions', async () => {
     const latest = makeLatest()
     const story = latest.briefing!.stories[0]

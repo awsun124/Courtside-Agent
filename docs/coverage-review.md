@@ -90,8 +90,9 @@ eligible candidate, while the Quentin Grimes injury remains separate from the
 Dončić injury. All 147 backend tests passed, including the new regression cases.
 
 These remain name and phrase heuristics. They do not identify every player,
-resolve all availability changes, or establish original authorship. Automatic
-targeted searches remain limited to games while injury episode matching and
-source attribution need further review. Existing saved briefings are unchanged
+resolve all availability changes, or establish original authorship. At this stage,
+automatic targeted searches remained limited to games while injury episode matching
+and source attribution needed further review. The subsequent expansion is described
+in [injury-search.md](injury-search.md). Existing saved briefings are unchanged
 until another refresh. Reprocessed files end in `-subject-review.json` inside
 the ignored comparison folder.

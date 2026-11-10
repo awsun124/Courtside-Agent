@@ -9,7 +9,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 from courtside.feeds import collect_feeds, load_sources, parse_feed
-from courtside.sources import collect_sources, merge_articles
+from courtside.sources import collect_sources, corroboration_query, merge_articles
 from courtside.stories import process_report
 from scripts.validate_gnews import SourceError
 
@@ -167,6 +167,32 @@ class FeedTests(unittest.TestCase):
         collect_sources(args, 'test-key', NOW, feed_transport=lambda *args: feed(),
                         news_transport=news, sleep=lambda seconds: None)
         self.assertEqual(queries, ['NBA'])
+
+    def test_injury_corroboration_uses_player_and_body_part_within_budget(self):
+        queries = []
+        def news(url, *unused):
+            queries.append(parse_qs(urlsplit(url).query)['q'][0])
+            index = len(queries)
+            return {'totalArticles': 1, 'articles': [{
+                'title': 'Marcus Reed ruled out for Lakers with ankle injury' if index == 1 else 'Marcus Reed cleared to play for Lakers after ankle sprain',
+                'description': 'An NBA ankle injury update.',
+                'url': f'https://publisher{index}.com/injury', 'publishedAt': f'2026-11-08T{17+index}:00:00Z',
+                'source': {'name': f'Publisher {index}'}}]}
+        args = Namespace(days=3, query='NBA', max_requests=2, max_seconds=90, timeout=30)
+        report = collect_sources(args, 'test-key', NOW, feed_transport=lambda *args: feed(),
+                                 news_transport=news, sleep=lambda seconds: None)
+        self.assertEqual(queries, ['NBA', 'marcus reed ankle injury'])
+        self.assertEqual(len(report['attempts']), 3)
+        injuries = [story for story in process_report(report)['stories'] if story['event'] == 'injury']
+        self.assertEqual(len(injuries), 1)
+        self.assertEqual(injuries[0]['reporting_groups'], 2)
+
+    def test_vague_or_recent_injuries_do_not_trigger_a_targeted_search(self):
+        for title, date in [('Lakers announce Marcus Reed injury news', 'Sun, 08 Nov 2026 18:00:00 GMT'),
+                            ('Marcus Reed ruled out for Lakers with ankle injury', 'Mon, 09 Nov 2026 10:00:00 GMT')]:
+            with self.subTest(title=title):
+                articles = self.parse(feed(item(title=title, date=date)))['articles']
+                self.assertIsNone(corroboration_query(articles, NOW - timedelta(hours=12)))
 
     def test_failed_corroboration_keeps_discovery_and_does_not_retry(self):
         calls = []

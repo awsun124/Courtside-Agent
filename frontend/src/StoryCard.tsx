@@ -96,6 +96,17 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
       </div>}
 
       <div className="story-details">
+        {story.injury_updates && story.injury_updates.length > 0 && <details>
+          <summary>Injury updates<Icon name="chevron" /></summary>
+          <div className="details-body sources-list">
+            <p className="detail-note">Availability inferred from saved headlines and excerpts. Check the dates and original reports for the latest status.</p>
+            {story.injury_updates.map(update => <div className="source-entry" key={update.url}>
+              <p><strong>Reported {update.availability}</strong> · {formatDate(update.published_at, true)}</p>
+              <SourceLink url={update.url}>{update.title}</SourceLink>
+              <p>{update.publisher}</p>
+            </div>)}
+          </div>
+        </details>}
         <details className="score-details">
           <summary>{story.rank ? 'Why this ranks' : 'Why this score'}<Icon name="chevron" /></summary>
           <div className="details-body">
