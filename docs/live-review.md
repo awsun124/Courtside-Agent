@@ -85,3 +85,25 @@ attribution, the 12-hour cutoff, expired deadlines, and targeted failures. The
 integrated path was checked with simulated API responses. No further live
 requests were made after the HTTP 429 response, so the live impact of this
 default budget split remains unverified.
+
+## Integrated live verification
+
+Two local API refreshes on November 10 exercised the new collection path.
+Each used three GNews requests and one Yahoo request. Both returned HTTP 200
+with explicitly partial coverage. The second saved briefing 8, with no source
+errors and one eligible Knicks versus Cavaliers story. Its score was 18.75,
+with three publisher labels and three estimated reporting groups. These are
+estimates of distinct coverage, not verified publisher independence.
+
+The first refresh exposed duplicate clusters for the same game when one report
+omitted the score. Matching teams, a shared named player, and the existing
+24-hour window now allow those reports to group. Conflicting known scores
+still prevent a match. Player grades, winners-and-losers commentary, watch
+guides, and commentary explaining an old quote are now held for review.
+
+All 138 backend tests and 18 frontend tests passed. The frontend production
+build passed. The saved live story has three evidence links and a completed
+rules investigation. No LLM requests were made. Visual browser verification
+remains incomplete because the Chrome automation connection rejected navigation.
+Local API responses are saved as `artifacts/live-refresh.json` and
+`artifacts/live-refresh-verified.json`.

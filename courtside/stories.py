@@ -99,14 +99,16 @@ def inspect_article(article):
         return "review", "Historical retrospective, not evidence of a recent event", {}
     if re.search(r"\b(and more|a lot more)\b", text):
         return "review", "Several topics, not one clear story", {}
-    if re.search(r"\b(roundup|wrap|expanded glance|conference glance|sports schedule|how to watch)\b", title_text):
+    if re.search(r"\b(roundup|wrap|expanded glance|conference glance|sports schedule|how to watch|where to watch)\b", title_text):
         return "review", "Several events or a schedule, not one clear story", {}
     basketball_context, context_basis = has_nba_context(article)
-    if re.search(r"\b(fantasy|waiver wire|power rankings|player grades|report card|game preview|open thread|weekly recap|week in review|takeaways|observations after|survey|predictions)\b", title_text):
+    if re.search(r"\b(fantasy|waiver wire|power rankings|player grades|grading every|winners and (?:\d+ )?losers|report card|game preview|open thread|weekly recap|week in review|takeaways|observations after|survey|predictions)\b", title_text):
         return "review", "Fantasy, preview, opinion, or recap rather than a direct event report", {}
     if re.search(r"\b(best|worst)\b.{0,50}\b(player|team|contract)\b", title_text):
         return "review", "Player or team evaluation, not a reported transaction", {}
     if re.search(r"\b(impressed|applaud|praise)\b", title_text):
+        return "review", "Reaction or commentary rather than direct event reporting", {}
+    if re.search(r"\bexplains\b.*\bquote\b", title_text):
         return "review", "Reaction or commentary rather than direct event reporting", {}
     if re.search(r"\binjury report\b", title_text) and re.search(r"\b(game|vs|at|starters)\b", title_text):
         return "review", "Pregame availability list rather than one clear injury development", {}
@@ -188,7 +190,7 @@ def same_event(left, right):
             first_scores = {tuple(sorted(map(int, score.split("-")))) for score in first["game_scores"]}
             second_scores = {tuple(sorted(map(int, score.split("-")))) for score in second["game_scores"]}
             return bool(first_scores & second_scores)
-        return first["teams"] == second["teams"] and similarity(first["terms"], second["terms"]) >= 0.45
+        return bool(set(first["people"]) & set(second["people"])) or similarity(first["terms"], second["terms"]) >= 0.45
     if not set(first["people"]) & set(second["people"]):
         return False
     if first["body_parts"] and second["body_parts"] and first["body_parts"] != second["body_parts"]:

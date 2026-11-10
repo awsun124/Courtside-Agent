@@ -189,6 +189,24 @@ class StoryTests(unittest.TestCase):
         result = process_report(report([first, second]))
         self.assertEqual(len(result["stories"]), 2)
 
+    def test_missing_score_does_not_split_reports_of_the_same_game(self):
+        articles = [article("Jalen Brunson leads Knicks past Cavaliers", "The Cleveland Cavaliers had a lead. Jalen Brunson took care of it."),
+                    article("Brunson powers Knicks in NBA rematch", "Jalen Brunson scored 31 points as New York Knicks beat Cleveland Cavaliers 109-97.", url="https://second.com/game"),
+                    article("Knicks win Cleveland NBA matchup", "Jalen Brunson led New York Knicks to a 109-97 win over Cleveland Cavaliers.", url="https://third.com/game")]
+        result = process_report(report(articles))
+        self.assertEqual(len(result["stories"]), 1)
+        self.assertEqual(len(result["stories"][0]["article_urls"]), 3)
+
+    def test_commentary_and_watch_guides_do_not_corroborate_a_game(self):
+        titles = ["Grading Every Knicks Player After 109-97 Win",
+                  "5 Winners and 3 Losers From Knicks Game vs Cavaliers",
+                  "Where to watch Knicks vs Cavaliers NBA free live stream",
+                  "Cavaliers coach explains infamous quote during playoffs loss to Knicks"]
+        for title in titles:
+            with self.subTest(title=title):
+                saved = article(title, "Jalen Brunson scored 31 as New York Knicks beat Cleveland Cavaliers 109-97.")
+                self.assertEqual(process_report(report([saved]))['articles'][0]['decision'], 'review')
+
     def test_dates_and_repeated_urls_are_checked_again(self):
         result = process_report(report([injury(), injury(url="https://example.com/story?utm_source=feed"),
                                         injury(url="https://other.com/old", published_at="2026-11-01T12:00:00Z"),
