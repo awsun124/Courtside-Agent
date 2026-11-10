@@ -236,7 +236,8 @@ def investigate_briefing(result, briefing, previous=None, settings=None, provide
                 if llm_calls >= settings.max_llm_calls:
                     break
                 llm_calls += 1
-            state["steps_left"] = settings.max_steps_per_story - story_step
+            state["steps_left"] = min(settings.max_steps_per_story - story_step, settings.max_steps - steps)
+            state["calls_left"] = settings.max_llm_calls - llm_calls + 1 if provider.uses_llm else None
             try:
                 action = provider.choose(state, max(0.01, deadline - clock()))
                 if clock() >= deadline:
@@ -267,6 +268,9 @@ def investigate_briefing(result, briefing, previous=None, settings=None, provide
                 provider.observe(action, tool_result)
             except Exception:
                 record["status"] = "unavailable"
+                status = getattr(provider, "last_http_status", None)
+                if type(status) is int and 100 <= status <= 599:
+                    record["provider_http_status"] = status
                 record["activity"].append(dict(step=story_step + 1, tool="rejected_action", status="rejected",
                                                decision="Provider output or tool arguments could not be safely used"))
                 break

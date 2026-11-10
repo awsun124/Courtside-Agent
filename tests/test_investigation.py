@@ -208,16 +208,35 @@ class InvestigationTests(unittest.TestCase):
             with patch("courtside.llm.subprocess.run", side_effect=responses) as calls:
                 investigated = investigate_briefing(result, briefing, settings=settings, provider=provider)
             self.assertEqual(calls.call_count, 2)
+            choices = []
             for call in calls.call_args_list:
                 self.assertNotIn("test-private-key", str(call.args))
                 request_line = next(line for line in call.kwargs["input"].splitlines() if line.startswith("data = "))
                 payload = json.loads(json.loads(request_line.removeprefix("data = ")))
+                choices.append(payload["tool_choice"])
+                self.assertEqual(payload["messages"][-1]["role"], "user")
+                self.assertIn("final allowed call" if len(choices) == 2 else "2 API calls left", payload["messages"][-1]["content"])
                 self.assertEqual(payload["max_completion_tokens"], 1000)
                 self.assertFalse(payload["parallel_tool_calls"])
+            self.assertEqual(choices, ["required", {"type": "function", "function": {"name": "finish"}}])
         self.assertEqual(investigated["investigation"]["llm_calls"], 2)
         self.assertTrue(investigated["candidates"][0]["summary"])
         self.assertNotIn("PRIVATE_THOUGHTS_MUST_NOT_BE_SAVED", json.dumps(investigated))
         self.assertNotIn("test-private-key", json.dumps(investigated))
+
+    def test_provider_rate_limit_records_status_without_raw_error_text(self):
+        result, briefing = fixtures()
+        with tempfile.TemporaryDirectory() as folder, patch.dict("os.environ", {}, clear=True):
+            env_file = Path(folder) / ".env"
+            env_file.write_text("ENABLE_LLM_CALLS=true\nLLM_API_KEY=test-private-key\nLLM_MODEL=test-model\n")
+            settings = InvestigationSettings(provider="openai-compatible", max_stories=1)
+            provider = ChatProvider(settings, env_file)
+            response = CompletedProcess([], 0, '{"error":"test-private-key private provider details"}\n429', '')
+            with patch("courtside.llm.subprocess.run", return_value=response):
+                saved = investigate_briefing(result, briefing, settings=settings, provider=provider)
+        self.assertEqual(saved["candidates"][0]["investigation"]["provider_http_status"], 429)
+        self.assertNotIn("test-private-key", json.dumps(saved))
+        self.assertNotIn("private provider details", json.dumps(saved))
 
     def test_invalid_limits_and_provider_urls_are_rejected(self):
         for settings in [InvestigationSettings(max_steps=0), InvestigationSettings(max_llm_calls=100),

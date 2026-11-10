@@ -92,8 +92,8 @@ failure leaves numerical ranking available with an unavailable status.
 ## Optional LLM provider
 
 There is a small adapter for providers supporting the OpenAI Chat Completions
-tool-calling format. It has only been tested with mocked responses, not a live
-paid model. It requires both an explicit provider choice and a server-side opt-in.
+tool-calling format. It has mocked-response tests and a live Groq check using fictional evidence.
+Other providers have not been verified live. It requires both an explicit provider choice and a server-side opt-in.
 Do not enable it until API spending and source-processing permissions are approved.
 
 In `config/investigation.json`, set `provider` to `openai-compatible`. Then configure
@@ -129,13 +129,50 @@ Feed-only material is excluded before investigation starts. A cluster containing
 
 Run `python -m scripts.check_agent` for an offline check using fictional injury
 reports and a separate trade rumor about the same fictional player. It checks
-related-story inspection, search, retrieval, in-story citations, and unchanged
-scores. Results go to ignored `artifacts/agent-check/report.json`.
+related-story inspection, retrieval, in-story citations, and unchanged scores.
+Search and previous-briefing comparison are recorded separately because they
+are not needed for every investigation. Results go to ignored `artifacts/agent-check/report.json`.
 
 `python -m scripts.check_agent --live` runs the same case with the configured LLM.
 It requires the existing server-side key, model, and explicit opt-in. It permits
 at most five API attempts, eight steps, 20 seconds, 16,000 input characters per
 request, and 500 output tokens per request. It does not change the app's settings.
 A blocked or incomplete run fails visibly and does not fall back to rules.
-The offline baseline passes. The live LLM check has not been run or funded.
+The offline baseline and the live Groq outcome below pass the required checks.
 This evaluates evidence boundaries, not independent reasoning or news accuracy.
+
+
+## Groq check
+
+The local `.env` is configured for Groq with `LLM_BASE_URL=https://api.groq.com/openai/v1`
+and `LLM_MODEL=qwen/qwen3.8-27b`. The key stays private. `ENABLE_LLM_CALLS=false`
+and the app's rules provider remain unchanged for normal refreshes. An explicit
+`ENABLE_LLM_CALLS=true python -m scripts.check_agent --live` enables only that
+process. Stay on Groq's free account tier for this setup.
+
+On November 10, 2026, three bounded runs made 14 HTTP attempts in total. Each run
+kept the five-call and 20-second limits. The first reached its call budget before
+finishing. The second ended with a rejected action. Its original trace does not
+establish the cause. The adapter now reserves the final allowed call for `finish`,
+tells the model its remaining budget, and records safe HTTP status codes when a
+provider request fails. Raw provider errors and private reasoning are not logged.
+
+The final run completed in four requests, inspected the related story, retrieved
+two injury excerpts, submitted supported citations, and left the numerical score
+unchanged. It did not cite the separate trade rumor. It skipped search and
+previous-briefing comparison because the target IDs were already supplied.
+
+The original evaluation required search even for this path and reported failure.
+That requirement was removed, with a regression test. Reassessing the saved
+outcome passed without another API call. The original trace remains intact at
+`artifacts/groq-check/final/report.json`; the reassessment is in the adjacent
+`assessment.json`. These artifacts stay local and ignored by Git.
+
+This verifies one small native tool-calling path on fictional material. It does
+not establish reliability on real news, factual accuracy, or model reasoning
+quality. No billing settings were changed and normal news refreshes still use
+rules. No publisher material was submitted in these checks.
+
+References: [Groq tool calling](https://console.groq.com/docs/tool-use/local-tool-calling),
+[compatible endpoint](https://console.groq.com/docs/openai), and
+[free-tier limits](https://console.groq.com/docs/rate-limits).

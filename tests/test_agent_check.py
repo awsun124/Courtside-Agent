@@ -32,6 +32,14 @@ class AgentCheckTests(unittest.TestCase):
         self.assertFalse(evaluated['passed'])
         self.assertFalse(evaluated['checks']['cited_target'])
 
+    def test_a_valid_investigation_can_skip_redundant_search(self):
+        report = run_check()
+        target = report['target']
+        target['investigation']['activity'] = [step for step in target['investigation']['activity'] if step['tool'] != 'search_articles']
+        evaluated = assess(deepcopy(target), {'candidates': [target], 'investigation': report['investigation']})
+        self.assertTrue(evaluated['passed'])
+        self.assertFalse(evaluated['optional_checks']['searched_articles'])
+
     def test_live_mode_requires_opt_in_and_does_not_silently_run_rules(self):
         with tempfile.TemporaryDirectory() as folder:
             env_file = Path(folder) / '.env'

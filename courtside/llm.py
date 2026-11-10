@@ -72,13 +72,22 @@ class ChatProvider:
             raise ValueError("LLM key and model must be configured on the server")
         self.url, self.settings = base_url + "/chat/completions", settings
         self.calls_made = 0
+        self.last_http_status = None
 
     def start(self, context):
         self.messages = [dict(role="system", content=SYSTEM_MESSAGE),
                          dict(role="user", content=json.dumps(dict(task="Investigate this story", untrusted_story=context)))]
 
     def choose(self, state, timeout):
-        payload = dict(model=self.model, messages=self.messages, tools=TOOLS, tool_choice="required",
+        finish_required = state.get("steps_left") == 1 or state.get("calls_left") == 1
+        choice = dict(type="function", function=dict(name="finish")) if finish_required else "required"
+        calls_left = state.get("calls_left")
+        budget = (f"You have {calls_left} API calls left, including this one. " if calls_left else "")
+        budget += "Inspect related stories and retrieve target evidence before finishing. Search when it can add evidence beyond the supplied target IDs. Reserve the final call for finish."
+        if finish_required:
+            budget = "This is the final allowed call. Call finish now with exact quotes from retrieved target evidence, or an empty claims array. Do not call another tool."
+        messages = self.messages + [dict(role="user", content=budget)]
+        payload = dict(model=self.model, messages=messages, tools=TOOLS, tool_choice=choice,
                        parallel_tool_calls=False, max_completion_tokens=self.settings.max_output_tokens)
         if len(json.dumps(payload)) > self.settings.max_input_characters:
             raise ValueError("LLM input size limit reached")
@@ -88,6 +97,7 @@ class ChatProvider:
                              "data = " + json.dumps(json.dumps(payload))])
         try:
             self.calls_made += 1
+            self.last_http_status = None
             response = subprocess.run(
                 ["curl", "--disable", "--silent", "--show-error", "--max-time", str(timeout),
                  "--connect-timeout", str(min(timeout, 10)), "--max-filesize", "100000",
@@ -96,6 +106,7 @@ class ChatProvider:
             if response.returncode:
                 raise ValueError("Provider connection failed")
             body, status = response.stdout.rsplit("\n", 1)
+            self.last_http_status = int(status)
             if status != "200":
                 raise ValueError("Provider request failed")
             message = json.loads(body)["choices"][0]["message"]

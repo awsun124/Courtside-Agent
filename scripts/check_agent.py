@@ -45,12 +45,13 @@ def assess(before, investigated):
     checks = dict(
         finished=record['status'] == 'complete',
         inspected_related='inspect_related_stories' in tools,
-        searched_articles='search_articles' in tools,
         retrieved_evidence='retrieve_material' in tools,
         cited_target=bool(citations) and all(citation['url'] in target['evidence_urls'] for citation in citations),
         scores_unchanged=all(target[field] == before[field] for field in ('score', 'rank', 'breakdown')),
     )
     return dict(passed=all(checks.values()), checks=checks,
+        optional_checks=dict(searched_articles='search_articles' in tools,
+                             compared_previous='compare_previous_briefings' in tools),
         note='Fictional evidence only. This checks tool use and evidence boundaries, not news accuracy or independent reasoning.',
         investigation=investigated['investigation'], target=target)
 
