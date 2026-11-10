@@ -132,6 +132,40 @@ describe('Court Side dashboard', () => {
     expect(screen.getByText(/Collected Nov 9/)).toBeTruthy()
   })
 
+  it('distinguishes reporting groups from publisher labels and source links', async () => {
+    const latest = makeLatest()
+    const story = latest.briefing!.stories[0]
+    story.publishers.push('Third Sports')
+    story.evidence_urls.push('https://third.example.com/copy')
+    story.reporting_groups[0].publishers.push('Third Sports')
+    story.reporting_groups[0].evidence_urls.push('https://third.example.com/copy')
+    story.breakdown.coverage.raw_publisher_labels = 3
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    await userEvent.click(screen.getByText('Why this ranks'))
+    expect(screen.getByText('2 estimated reporting groups from 3 source links across 3 publisher labels.')).toBeTruthy()
+    expect(screen.getByText(/Limited monitored coverage: 2 of the 8/)).toBeTruthy()
+    await userEvent.click(screen.getByText('Sources'))
+    const groups = screen.getByLabelText('Reporting groups')
+    expect(within(groups).getByText('Reporting group 1')).toBeTruthy()
+    expect(within(groups).getByRole('link', { name: 'third.example.com' }).getAttribute('href')).toBe('https://third.example.com/copy')
+    expect(within(groups).getByText(/These links count together/)).toBeTruthy()
+    expect(within(groups).queryByText('Reporting group 3')).toBeNull()
+  })
+
+  it('attributes fallback links using their reporting groups instead of array positions', async () => {
+    const latest = makeLatest()
+    const story = latest.briefing!.stories[0]
+    story.summary = null
+    story.evidence_urls.reverse()
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    expect(screen.getAllByRole('link', { name: 'Sample newsroom alpha' }).every(link => link.getAttribute('href') === 'https://alpha.example.com/story')).toBe(true)
+    expect(screen.getAllByRole('link', { name: 'Sample newsroom bravo' }).every(link => link.getAttribute('href') === 'https://bravo.example.com/story')).toBe(true)
+  })
+
   it('keeps the old briefing after a failed manual refresh', async () => {
     serve()
     const reads = fetchMock.getMockImplementation()!

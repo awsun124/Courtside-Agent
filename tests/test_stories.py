@@ -207,6 +207,17 @@ class StoryTests(unittest.TestCase):
                 saved = article(title, "Jalen Brunson scored 31 as New York Knicks beat Cleveland Cavaliers 109-97.")
                 self.assertEqual(process_report(report([saved]))['articles'][0]['decision'], 'review')
 
+    def test_award_and_weekly_preview_are_not_injury_corroboration(self):
+        articles = [article("Lakers Star Luka Doncic Named NBA Player of the Week Amid Historic Start",
+                            "The Lakers announced major NBA news for Luka Doncic following his brief injury absence."),
+                    article("Week 4 Look Ahead: Luka Doncic dominates while Kon Knueppel returns to injury report",
+                            "Luka Doncic played well for the Lakers despite his back injury.", url="https://second.com/preview"),
+                    article("NBA trade grades: Thunder acquire Clifford from Kings",
+                            "A closer look at the trade between the Thunder and Kings.", url="https://third.com/grades")]
+        result = process_report(report(articles))
+        self.assertEqual(result['decisions'], {'review': 3})
+        self.assertEqual(result['stories'], [])
+
     def test_dates_and_repeated_urls_are_checked_again(self):
         result = process_report(report([injury(), injury(url="https://example.com/story?utm_source=feed"),
                                         injury(url="https://other.com/old", published_at="2026-11-01T12:00:00Z"),

@@ -102,8 +102,10 @@ def inspect_article(article):
     if re.search(r"\b(roundup|wrap|expanded glance|conference glance|sports schedule|how to watch|where to watch)\b", title_text):
         return "review", "Several events or a schedule, not one clear story", {}
     basketball_context, context_basis = has_nba_context(article)
-    if re.search(r"\b(fantasy|waiver wire|power rankings|player grades|grading every|winners and (?:\d+ )?losers|report card|game preview|open thread|weekly recap|week in review|takeaways|observations after|survey|predictions)\b", title_text):
+    if re.search(r"\b(fantasy|waiver wire|power rankings|player grades|trade grades|grading every|winners and (?:\d+ )?losers|report card|preview|look ahead|lookahead|open thread|weekly recap|week in review|takeaways|observations after|survey|predictions)\b", title_text):
         return "review", "Fantasy, preview, opinion, or recap rather than a direct event report", {}
+    if re.search(r"\bplayer of the (week|month|year)\b", title_text):
+        return "review", "Award announcement needs separate event classification", {}
     if re.search(r"\b(best|worst)\b.{0,50}\b(player|team|contract)\b", title_text):
         return "review", "Player or team evaluation, not a reported transaction", {}
     if re.search(r"\b(impressed|applaud|praise)\b", title_text):

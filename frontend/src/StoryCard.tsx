@@ -29,6 +29,13 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
   const newLinks = changed?.new_source_urls?.length ?? 0
   const removedLinks = changed?.removed_source_urls?.length ?? 0
 
+  function sourceLabel(url: string) {
+    const group = story.reporting_groups.find(group => group.evidence_urls.includes(url))
+    if (group?.publishers.length === 1) return group.publishers[0]
+    const href = safeLink(url)
+    return href ? new URL(href).hostname : 'Source link'
+  }
+
   async function loadSources() {
     if (sourceState === 'loading' || sourceState === 'ready') return
     const request = new AbortController()
@@ -70,7 +77,7 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
         <div className="citation-links">{summary.citations.map(citation => <SourceLink key={citation.evidence_id} url={citation.url}>{citation.publisher}</SourceLink>)}</div>
       </> : <>
         <p className="missing-summary">{story.investigation?.status === 'source_restricted' ? 'Feed headline only. This story is excluded from generated summaries and investigation.' : 'No evidence check has been saved for this briefing yet. Original reporting is linked below.'}</p>
-        <div className="citation-links">{story.evidence_urls.map((url, index) => <SourceLink key={url} url={url}>{story.publishers[index] ?? 'Original source'}</SourceLink>)}</div>
+        <div className="citation-links">{story.evidence_urls.map(url => <SourceLink key={url} url={url}>{sourceLabel(url)}</SourceLink>)}</div>
       </>}
       <div className="story-meta">
         <span>{story.publishers.join(' · ')}</span>
@@ -92,6 +99,8 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
         <details className="score-details">
           <summary>{story.rank ? 'Why this ranks' : 'Why this score'}<Icon name="chevron" /></summary>
           <div className="details-body">
+            <p>{plural(story.breakdown.coverage.independent_publishers, 'estimated reporting group')} from {plural(story.evidence_urls.length, 'source link')} across {plural(story.publishers.length, 'publisher label')}.</p>
+            {story.breakdown.coverage.independent_publishers < story.breakdown.coverage.target && <p className="detail-note">Limited monitored coverage: {story.breakdown.coverage.independent_publishers} of the {story.breakdown.coverage.target} reporting groups needed for full coverage points.</p>}
             {components.map(component => <div className="score-component" key={component.label}>
               <div className="score-label"><strong>{component.label}</strong><span>{component.points.toFixed(2)} / {component.maximum.toFixed(0)}</span></div>
               <div className="score-track" role="meter" aria-label={`${component.label} score`} aria-valuenow={component.points} aria-valuemin={0} aria-valuemax={component.maximum || 1}><span style={{ width: `${component.maximum > 0 ? Math.max(0, Math.min(100, component.score * 100)) : 0}%` }} /></div>
@@ -107,14 +116,23 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
           <div className="details-body sources-list">
             {sourceState === 'loading' && <p role="status">Loading source details…</p>}
             {sourceState === 'error' && <div><p>Could not load the saved source details.</p><button className="text-button" onClick={() => void loadSources()}>Try source details again</button></div>}
-            {detail?.articles.map(article => <div className="source-entry" key={article.url}>
-              <SourceLink url={article.url}>{article.title}</SourceLink>
-              <p>{article.publisher_name} · Published {formatDate(article.published_at, true)}</p>
-              {article.attribution_note && <p>{article.attribution_note}</p>}
-              <p className="collection-time">Collected {formatDate(article.collected_at, true)}</p>
-            </div>)}
-            {!detail && <ul>{story.evidence_urls.map((url, index) => <li key={url}><SourceLink url={url}>{story.publishers[index] ?? `Source ${index + 1}`}</SourceLink></li>)}</ul>}
+            <div aria-label="Reporting groups">{story.reporting_groups.map((group, index) => <div className="source-entry" key={index}>
+              <p><strong>Reporting group {index + 1}</strong> · {group.publishers.join(' · ')}</p>
+              {group.evidence_urls.map(url => {
+                const article = detail?.articles.find(article => article.url === url)
+                return <div key={url}>
+                  <SourceLink url={url}>{article?.title ?? sourceLabel(url)}</SourceLink>
+                  {article && <>
+                    <p>{article.publisher_name} · Published {formatDate(article.published_at, true)}</p>
+                    {article.attribution_note && <p>{article.attribution_note}</p>}
+                    <p className="collection-time">Collected {formatDate(article.collected_at, true)}</p>
+                  </>}
+                </div>
+              })}
+              {group.evidence_urls.length > 1 && <p className="detail-note">These links count together because they share a publisher or appear to carry the same report.</p>}
+            </div>)}</div>
             <p className="detail-note">Some publishers may carry the same report. Their links stay available, but likely copies count once.</p>
+            <p className="detail-note">Reporting groups are estimates. Original authorship and publisher ownership have not been verified.</p>
           </div>
         </details>
 
