@@ -82,3 +82,6 @@ Additional sources do not automatically establish independent reporting.
 The next quality check should use a separate saved sample before expanding the
 recognized event patterns further. Existing briefing snapshots stay reproducible.
 New rules apply on the next refresh or an explicit offline reprocessing run.
+
+
+A [separate saved-sample check](separate-review.md) now records results on sixteen nonoverlapping article URLs, with explicit limits on how independent that check is.
