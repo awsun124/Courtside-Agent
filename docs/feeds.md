@@ -22,6 +22,11 @@ HTML entities are decoded for plain-text display. This is not a general license
 for article reuse, advertising, or AI processing. Recheck applicable terms before
 public deployment or changing the use.
 
+The terms do not clearly address grouping and ranking headlines. The current
+pipeline uses Yahoo headline metadata for those calculations, even though it
+withholds feed excerpts from AI investigation. Confirm that use with Yahoo
+before public deployment.
+
 Feed material has `investigation_allowed: false`. Any cluster containing it is
 excluded from investigation, generated summaries, and previous-briefing context
 sent to a provider. Scores still run in deterministic code. Duplicate articles

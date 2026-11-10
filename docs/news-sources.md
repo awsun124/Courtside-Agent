@@ -1,6 +1,6 @@
 # Free NBA source candidates
 
-Research and direct endpoint checks: November 9, 2026. Yahoo has since been enabled for attributed headline display. Other feed candidates remain disabled. See [feed collection](feeds.md).
+Endpoint checks: November 9, 2026. Usage terms reviewed November 10, 2026. Yahoo is enabled for attributed headline display. Other feed candidates remain disabled. See [feed collection](feeds.md).
 
 ## Direct feed checks
 
@@ -29,13 +29,12 @@ arbitrary three-day or seven-day period. A retained rolling collection would be
 needed to accumulate that history. Publication dates alone do not establish the
 date of the event.
 
-## Recommended pool
+## Coverage sources to investigate
 
-Evaluate ESPN, CBS, Yahoo, The Athletic, and New York Post first for news breadth.
-Then evaluate Hoops Rumors and RealGM for transactions and leads. Treat their
-references to another outlet as attributed coverage, not automatic independent
-corroboration. The remaining working feeds can expand discovery after relevance
-and overlap checks. These priorities are implementation judgments, not measured
+The feeds above show potential coverage, not permission to collect them. Yahoo
+is the only feed currently enabled, and its ranking use still needs clarification.
+Treat references to another outlet as attributed coverage, not automatic
+independent corroboration. These are coverage observations, not measured
 accuracy ratings.
 
 Before enabling each source, record its permitted display, retention, and AI
@@ -47,11 +46,38 @@ Keep one shared article schema, canonical URL deduplication, original reporting
 attribution, and per-source success dates. Fetching the same article through
 GNews and a direct feed must not add another publisher or reporting group.
 
+## Usage review
+
+An endpoint returning headlines is not permission to store or rank them. These
+official terms do not support adding several feeds to the current automated
+collection without written permission:
+
+- [ESPN points users to Disney's Terms of Use](https://support.espn.com/hc/en-us/articles/360035445091-Terms-of-Use). Disney's terms restrict automated access to its products without express written permission. The ESPN RSS endpoint worked in the saved check, but I found no RSS-specific license that resolves this restriction.
+- [CBS Sports lists an NBA RSS feed](https://www.cbssports.com/xml/rss), but its [Terms of Use](https://www.cbssports.com/info/about/tos/dm) prohibit copying or storing site materials without prior written permission. Do not collect the feed into the app database based only on public availability.
+- The [Guardian Open Platform](https://open-platform.theguardian.com/access/) offers a free developer key for non-commercial use, but its [terms](https://www.theguardian.com/open-platform/terms-and-conditions) require deletion or replacement of content within 24 hours and prohibit automated collection, data aggregation, analysis, and AI use. Those terms conflict with this app's pipeline.
+- GNews's [current terms](https://gnews.io/legal/terms-of-service) limit free-plan API and data use to personal, academic, evaluation, and other non-commercial purposes. They do not grant rights in the underlying publishers' work. Check with GNews and the relevant publishers before a public portfolio deployment.
+- Yahoo's [RSS terms](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html?ncid=mbr_idnedulnk00000001) allow feed content to be displayed without modification, with attribution and a link, and prohibit adding advertising to the feed. They do not clearly address using headlines to group and score stories. The current collector keeps Yahoo excerpts out of AI investigation, but deterministic ranking still uses headline metadata. Clarify that use with Yahoo before public deployment.
+
+For now, keep the source list unchanged for local evaluation and do not enable
+ESPN, CBS, or Guardian. This research did not find another source whose
+published terms clearly cover this app's collection, ranking, and optional AI
+workflow. Feed availability is not evidence of permission.
+
+## What the saved run says
+
+The latest saved live briefing in the local database is from November 9, 2026.
+It collected 30 GNews results and 50 Yahoo feed headlines. Processing formed
+seven event candidates, but only one met the ranking threshold. An offline
+review of the same 80 articles found event recognition and publisher
+independence still leave many articles undecided. This is a small saved sample,
+not a current source-coverage benchmark. Adding feeds alone would not fix those
+issues.
+
 ## Other free API options
 
 | Service | Documented free offering | Fit for Court Side |
 | --- | --- | --- |
-| [Guardian Open Platform](https://open-platform.theguardian.com/access/) | Developer key, noncommercial use, 500 calls daily, one per second | Potential supplementary original source. Review retention and AI conditions separately. |
+| [Guardian Open Platform](https://open-platform.theguardian.com/access/) | Developer key, noncommercial use, 500 calls daily, one per second | Not a fit for this pipeline. Its terms prohibit automated aggregation, analysis, and AI use. |
 | [TheNewsAPI.com](https://www.thenewsapi.com/pricing) | 100 requests daily, three articles per request | Possible comparison trial, but small pages and untested NBA relevance. Public-use terms still need checking. |
 | [NewsData.io](https://newsdata.io/pricing) | 200 credits daily, up to ten articles per credit, 12-hour delay, past 48 hours | Poor immediate replacement for a three-day or seven-day backfill. Not authenticated or tested here. |
 | [NewsAPI.org](https://newsapi.org/pricing) | Development only, 100 requests daily, 24-hour delay | Exclude from the free deployed configuration. Its free tier forbids production use. |
@@ -84,3 +110,29 @@ Publisher references:
 - [Guardian API access](https://open-platform.theguardian.com/access/)
 - [Guardian API terms](https://www.theguardian.com/open-platform/terms-and-conditions)
 - [NewsAPI free-tier restrictions](https://newsapi.org/terms)
+
+## Additional source research
+
+Checked November 10, 2026. These options were not added to the collector.
+
+| Option | What it adds | Finding |
+| --- | --- | --- |
+| [BBC Sport RSS](https://www.bbc.co.uk/sport/articles/cqllxj2n4kyo) | A large sports publisher and potentially international NBA coverage | BBC documents RSS for website display with attribution. Its terms say business use needs permission and may cost a fee, and metadata use requires a license. The feed list does not establish a current NBA-specific feed or sufficient NBA volume. Not a clear free fit for this app. |
+| [TheNewsAPI](https://www.thenewsapi.com/pricing) | An aggregator that may return publisher domains beyond the existing collectors | Free plan says 100 requests daily and 3 articles per request. It returns snippets and links, not full articles. The API documentation supports date, source, and search filters, but the terms only grant personal, non-commercial use and prohibit automated access to the site. Confirm API-specific rights and test NBA coverage before integrating. |
+| [NewsData.io](https://newsdata.io/pricing) | Another multi-publisher aggregator | Free plan advertises 200 credits daily, up to 10 articles per credit, a 12-hour delay, and only the past 48 hours. Its terms say it does not grant rights to third-party raw content. Do not treat the free API key as permission to reuse returned article text. |
+| [SportsDataIO NBA news](https://sportsdata.io/developers/api-documentation/nba) | Sports-specific news endpoints | The free trial is limited to UEFA Champions League data, not NBA. NBA news access is therefore not a practical free addition. |
+| [NBA.com RSS](https://www.nba.com/rss/nba_rss.xml) | Official league updates | The commonly cited league RSS endpoint returned 404 in this check. A historic team RSS information page still exists, but it did not provide a working league-wide feed. |
+
+The two news APIs could widen the list of publisher domains, but they are
+aggregators, not independent publishers. They may return stories already found
+through GNews or Yahoo, and their free plans do not settle the underlying
+publisher reuse rights. The BBC route is a direct publisher feed, but the
+published business-use terms do not establish free permission for Court Side.
+
+**Recommendation:** do not add another automated source yet. If you want to
+increase coverage without paying, first request written permission from one or
+two direct publishers for headline metadata, links, storage duration, ranking,
+and optional AI processing. A second route is to test TheNewsAPI with a free
+account for coverage only after confirming that its API-specific terms allow
+this personal portfolio project and its limited snippet use. Do not add a
+provider response until that permission and the actual NBA results are checked.
