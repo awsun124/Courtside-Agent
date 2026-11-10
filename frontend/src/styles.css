@@ -244,7 +244,6 @@ details > summary:hover { color: var(--accent); }
   .brand > span { font-size: 19px; letter-spacing: -.8px; }
   .header-inner nav { gap: 12px; }
   .header-inner nav a { font-size: 10px; }
-  .header-inner nav a:last-child { display: none; }
   .page-shell { padding-inline: 18px; }
   h1 { font-size: 42px; letter-spacing: -1.8px; }
   .intro-kicker { font-size: 8px; }
@@ -285,6 +284,53 @@ details > summary:hover { color: var(--accent); }
   .method-row h3 { font-size: 12px; }
   .sidebar-details + .sidebar-details { margin-top: -26px; border-top: 0; }
   .site-footer { flex-direction: column; align-items: start; gap: 18px; margin-top: 40px; }
+}
+
+.ranking-page { max-width: 1060px; }
+.ranking-page .page-intro { padding-bottom: 40px; }
+.ranking-page .intro-copy { max-width: 650px; }
+.ranking-section { padding: 34px 0; border-top: 1px solid var(--line); }
+.ranking-section h2 { font-family: Georgia, serif; font-size: clamp(26px, 3vw, 34px); font-weight: 400; letter-spacing: -.6px; margin: 10px 0 20px; line-height: 1.2; }
+.ranking-section > p:not(.eyebrow), .ranking-steps p { font-size: 15px; line-height: 1.8; color: var(--muted); max-width: 78ch; }
+.ranking-steps { padding-left: 24px; margin: 24px 0; }
+.ranking-steps li { padding-left: 10px; margin: 20px 0; }
+.ranking-steps li::marker { color: var(--accent); font-weight: 650; }
+.ranking-steps strong { font-size: 16px; }
+.ranking-steps p { margin: 5px 0 0; }
+.ranking-section .ranking-note { border-left: 2px solid var(--accent); background: #efede4; padding: 14px 18px; font-size: 13px !important; }
+.ranking-components { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 30px 0; }
+.ranking-components section { border-top: 2px solid var(--ink); padding-top: 18px; min-width: 0; }
+.ranking-weight { display: block; font-family: Georgia, serif; font-size: 44px; color: var(--accent); letter-spacing: -1px; }
+.ranking-weight > span { font-size: 22px; margin-left: 3px; }
+.ranking-components h3 { font-size: 18px; margin: 14px 0 10px; }
+.ranking-components p { font-size: 14px; line-height: 1.8; color: var(--muted); }
+.ranking-components code, .ranking-formula code { display: block; font-size: 12px; line-height: 1.8; white-space: normal; overflow-wrap: anywhere; }
+.ranking-formula { border-block: 1px solid var(--line); padding: 16px 0; }
+.ranking-formula summary { cursor: pointer; font-size: 14px; font-weight: 600; }
+.ranking-formula > div { padding: 5px 0; }
+.ranking-formula p { font-size: 14px; line-height: 1.8; color: var(--muted); }
+.ranking-formula code { margin: 8px 0; }
+.ranking-example { overflow-x: auto; margin: 24px 0; }
+.ranking-example table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+.ranking-example caption { text-align: left; color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+.ranking-example th, .ranking-example td { padding: 15px 12px; border-bottom: 1px solid var(--line); line-height: 1.6; }
+.ranking-example thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.ranking-example tbody th { font-weight: 600; }
+.ranking-example tfoot { background: #ecece3; font-weight: 650; }
+.ranking-back { display: inline-flex; text-decoration: none; margin-top: 16px; }
+
+@media (max-width: 700px) {
+  .ranking-components { grid-template-columns: 1fr; gap: 20px; }
+  .ranking-components section { padding-top: 15px; }
+  .ranking-weight { font-size: 36px; }
+  .ranking-section { padding-block: 28px; }
+  .ranking-example th, .ranking-example td { padding-inline: 6px; font-size: 12px; }
+}
+
+@media (max-width: 380px) {
+  .header-inner { flex-wrap: wrap; height: auto; padding-block: 14px; row-gap: 10px; }
+  .header-inner nav { width: 100%; margin-left: 0; justify-content: space-between; }
+  .header-inner nav a { min-height: 30px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

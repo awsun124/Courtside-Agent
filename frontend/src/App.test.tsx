@@ -40,6 +40,8 @@ describe('Court Side dashboard', () => {
     expect(screen.getByText('Provisional')).toBeTruthy()
     expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
     expect(screen.getByLabelText('Rank 1').textContent).toBe('01')
+    expect(screen.getByRole('link', { name: 'How we rank' }).getAttribute('href')).toBe('/ranking')
+    expect(screen.getByRole('link', { name: 'Read the methodology' }).getAttribute('href')).toBe('/ranking')
   })
 
   it('does not silently switch to sample data when the API is down', async () => {

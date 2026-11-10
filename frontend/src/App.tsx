@@ -3,15 +3,14 @@ import { Icon } from './Icons'
 import StoryCard from './StoryCard'
 import SampleInvestigation from './SampleInvestigation'
 import { useBriefing } from './useBriefing'
-
-function Brand() {
-  return <a className="brand" href="#top" aria-label="Court Side home">
-    <svg width="35" height="35" viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="6" fill="currentColor" /><g fill="none" stroke="#fffaf0" strokeWidth="1.4"><circle cx="20" cy="20" r="12" /><path d="M8 20h24M20 8v24M11 12c10 2 10 14 18 16M11 28c10-2 10-14 18-16" /></g></svg>
-    <span>COURT SIDE<span className="brand-period">.</span></span>
-  </a>
-}
+import SiteHeader from './SiteHeader'
+import RankingPage from './RankingPage'
 
 export default function App() {
+  return window.location.pathname.replace(/\/$/, '') === '/ranking' ? <RankingPage /> : <Dashboard />
+}
+
+function Dashboard() {
   const state = useBriefing()
   const { data, mode, loading, refreshing, days } = state
   const briefing = data?.briefing
@@ -26,11 +25,7 @@ export default function App() {
 
   return <div id="top">
     <a className="skip-link" href="#briefing">Skip to briefing</a>
-    <header className="site-header"><div className="header-inner">
-      <Brand />
-      <nav aria-label="Main navigation"><a href="#briefing" className="active">NBA briefing</a><a href="#method">How we rank</a></nav>
-      <span className="header-date">{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(state.now)}</span>
-    </div></header>
+    <SiteHeader page="briefing" now={state.now} />
 
     <main className="page-shell">
       <section className="page-intro" aria-labelledby="page-title">
@@ -89,7 +84,7 @@ export default function App() {
 
           <section className="method-panel" id="method"><p className="eyebrow">THE METHOD</p><h2>How the score works.</h2><p>Each story gets a score from three simple measures.</p>
             {[['Coverage', weights.coverage_weight, 'How many independent publishers cover the event.'], ['Momentum', weights.momentum_weight, 'How quickly new reporting groups are joining the story.'], ['Freshness', weights.freshness_weight, 'The latest development backed by reviewed evidence.']].map(([label, weight, explanation]) => <div className="method-row" key={String(label)}><span className="method-weight">{Math.round(Number(weight) * 100)}<small>%</small></span><div><h3>{label}</h3><p>{explanation}</p></div></div>)}
-            <a className="method-link" href="https://github.com/awsun124/Courtside-Agent/blob/main/docs/ranking.md" target="_blank" rel="noopener noreferrer">Read the methodology<Icon name="external" /></a>
+            <a className="method-link" href={mode === 'sample' ? '/ranking?mode=sample' : '/ranking'}>Read the methodology<Icon name="arrow" /></a>
           </section>
 
           {!!briefing?.sources?.length && <details className="sidebar-details"><summary>Collection sources<Icon name="chevron" /></summary><div className="details-body">
