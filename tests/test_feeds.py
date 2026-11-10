@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 from courtside.feeds import collect_feeds, load_sources, parse_feed
 from courtside.sources import collect_sources, merge_articles
@@ -134,6 +135,71 @@ class FeedTests(unittest.TestCase):
             raise SourceError('Unavailable')
         with self.assertRaises(SourceError):
             collect_sources(args, None, NOW, feed_transport=fail)
+
+    def test_corroboration_uses_existing_budget_and_preserves_publishers(self):
+        queries = []
+        def news(url, *unused):
+            queries.append(parse_qs(urlsplit(url).query)['q'][0])
+            index = len(queries)
+            return {'totalArticles': 1, 'articles': [{
+                'title': 'NBA Lakers beat Pistons 110-102' if index == 1 else 'NBA Pistons lost to Lakers 102-110',
+                'url': f'https://publisher{index}.com/game', 'publishedAt': '2026-11-08T18:00:00Z',
+                'source': {'name': f'Publisher {index}'}}]}
+        args = Namespace(days=3, query='NBA', max_requests=2, max_seconds=90, timeout=30)
+        report = collect_sources(args, 'test-key', NOW, feed_transport=lambda *args: feed(),
+                                 news_transport=news, sleep=lambda seconds: None)
+        self.assertEqual(queries[0], 'NBA')
+        self.assertEqual(set(queries[1].split()), {'lakers', 'pistons'})
+        self.assertEqual(len(report['attempts']), 3)
+        self.assertEqual(report['attempts'][-1]['purpose'], 'corroboration')
+        self.assertFalse(report['complete_available_results'])
+        result = process_report(report)
+        game = next(story for story in result['stories'] if 'Publisher 2' in story['publishers'])
+        self.assertIn('Publisher 1', game['publishers'])
+        self.assertGreaterEqual(game['reporting_groups'], 2)
+
+    def test_recent_feed_games_do_not_trigger_unavailable_corroboration(self):
+        queries = []
+        def news(url, *unused):
+            queries.append(parse_qs(urlsplit(url).query)['q'][0])
+            return {'totalArticles': 0, 'articles': []}
+        args = Namespace(days=3, query='NBA', max_requests=2, max_seconds=90, timeout=30)
+        collect_sources(args, 'test-key', NOW, feed_transport=lambda *args: feed(),
+                        news_transport=news, sleep=lambda seconds: None)
+        self.assertEqual(queries, ['NBA'])
+
+    def test_failed_corroboration_keeps_discovery_and_does_not_retry(self):
+        calls = []
+        def news(url, *unused):
+            calls.append(url)
+            if len(calls) == 2:
+                raise SourceError('GNews rate or quota limit reached')
+            return {'totalArticles': 1, 'articles': [{
+                'title': 'NBA Lakers beat Pistons 110-102', 'url': 'https://example.com/game',
+                'publishedAt': '2026-11-08T18:00:00Z', 'source': {'name': 'Example Sports'}}]}
+        args = Namespace(days=3, query='NBA', max_requests=2, max_seconds=90, timeout=30)
+        report = collect_sources(args, 'test-key', NOW, feed_transport=lambda *args: feed(),
+                                 news_transport=news, sleep=lambda seconds: None)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(report['sources'][0]['status'], 'partial')
+        self.assertEqual(len(report['articles']), 2)
+        self.assertEqual(report['attempts'][-1]['status'], 'failed')
+
+    def test_expired_budget_after_pause_skips_corroboration(self):
+        elapsed = [0]
+        calls = []
+        def news(url, *unused):
+            calls.append(url)
+            return {'totalArticles': 1, 'articles': [{
+                'title': 'NBA Lakers beat Pistons 110-102', 'url': 'https://example.com/game',
+                'publishedAt': '2026-11-08T18:00:00Z', 'source': {'name': 'Example Sports'}}]}
+        def pause(seconds):
+            elapsed[0] = 100
+        args = Namespace(days=3, query='NBA', max_requests=2, max_seconds=90, timeout=30)
+        report = collect_sources(args, 'test-key', NOW, feed_transport=lambda *args: feed(),
+                                 news_transport=news, clock=lambda: elapsed[0], sleep=pause)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(report['articles']), 2)
 
     def test_duplicate_url_cannot_bypass_restrictions_or_add_a_publisher(self):
         restricted = self.parse(feed())['articles'][0]

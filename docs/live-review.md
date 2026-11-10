@@ -34,3 +34,54 @@ need investigation. The ranking evidence minimum remains two publishers.
 
 Local collection and processing files are in `artifacts/fresh-review/`, which
 is ignored by Git. They contain the saved live results used for this review.
+
+## Targeted search follow-up
+
+Later on November 10, a GNews search for `Thunder Wizards` used the same
+three-day window and one request. It returned 10 articles from 28 reported
+matches. Nine article URLs were additional to the original collection.
+
+Combining those results with the original collection produced one eligible
+ranked candidate: Oklahoma City's 114-75 win over Washington. The group had
+five publisher labels and three estimated reporting groups. Toronto Star,
+WTOP, and Schenectady Gazette were grouped as likely copies of the same
+AP report. Tulsa World and Heavy were separate estimated groups. Original
+reporting and ownership independence have not been manually verified.
+
+The second planned query, `Lakers Pistons`, received HTTP 429. The third query
+was skipped, and no retries were made. That response does not establish whether
+the limit was a short request rate limit or an exhausted quota.
+
+This suggests targeted searches can recover relevant coverage that a broad
+`NBA` search misses within a small result budget. It does not establish how
+well that approach works across many stories. This experiment informed the
+bounded corroboration step described below.
+
+Saved query responses and the combined processing results are in
+`artifacts/targeted-review/`. The dashboard database was not changed by this
+experiment. No LLM requests were made.
+
+## Corroboration during refresh
+
+Live refreshes now reserve one GNews request for targeted corroboration when
+the configured budget is at least two requests. The default three-request
+budget permits two discovery requests and one targeted request. A one-request
+budget continues to run discovery only.
+
+After discovery, deterministic code selects the newest game candidate with
+one estimated reporting group and searches its two team nicknames. Candidates
+newer than GNews's 12-hour cutoff are skipped. If no candidate qualifies, the
+reserved request is unused. Other event types are not targeted yet.
+
+The targeted step shares the existing collection deadline, waits two seconds
+after discovery, and makes no retries. A failed discovery prevents the targeted
+request. A failed targeted request preserves the discovery results and marks
+the source partial. Each recorded API attempt includes its query and purpose.
+All results pass through the existing URL deduplication, material restrictions,
+story grouping, and ranking rules.
+
+All 136 backend tests passed, including coverage of request limits, publisher
+attribution, the 12-hour cutoff, expired deadlines, and targeted failures. The
+integrated path was checked with simulated API responses. No further live
+requests were made after the HTTP 429 response, so the live impact of this
+default budget split remains unverified.
