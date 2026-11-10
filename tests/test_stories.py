@@ -322,6 +322,27 @@ class StoryTests(unittest.TestCase):
         features = process_report(report([saved]))['articles'][0]['features']
         self.assertIsNone(features['injury_availability'])
 
+    def test_injured_descriptor_does_not_turn_a_human_interest_story_into_an_update(self):
+        titles = ["Injured Warriors guard Jimmy Butler dresses up as member of coaching staff for game with Pelicans",
+                  "Lakers injured guard Marcus Reed joins teammates for charity event"]
+        for title in titles:
+            with self.subTest(title=title):
+                saved = article(title, "The NBA player wore a coaching outfit while recovering from a knee injury.")
+                result = process_report(report([saved]))
+                self.assertEqual(result['articles'][0]['decision'], 'review')
+
+    def test_injured_descriptor_preserves_actual_developments(self):
+        cases = [('Injured Lakers guard Marcus Reed cleared to play', 'injury'),
+                 ('Injured Lakers guard Marcus Reed signs extension', 'contract'),
+                 ('Marcus Reed injured in Lakers game', 'injury'),
+                 ('Injured Lakers guard Marcus Reed needs ankle surgery', 'injury')]
+        for title, event in cases:
+            with self.subTest(title=title):
+                saved = article(title, "A new NBA development for the Los Angeles Lakers.")
+                result = process_report(report([saved]))
+                self.assertEqual(result['articles'][0]['decision'], 'included')
+                self.assertEqual(result['articles'][0]['features']['event'], event)
+
     def test_dates_and_repeated_urls_are_checked_again(self):
         result = process_report(report([injury(), injury(url="https://example.com/story?utm_source=feed"),
                                         injury(url="https://other.com/old", published_at="2026-11-01T12:00:00Z"),

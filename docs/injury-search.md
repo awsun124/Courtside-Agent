@@ -59,3 +59,26 @@ and missing body parts or unclear names can leave related coverage separate.
 Availability inference can miss complex negation or conflicting accounts. The
 dated source links remain the evidence. Reporting groups do not establish
 publisher ownership independence or original authorship.
+
+## Full refresh and descriptive injury mentions
+
+A later full three-day refresh on November 10 returned HTTP 200 and saved
+briefing 12. It used three GNews requests and one Yahoo request, with explicitly
+partial coverage and no source failures. GNews returned 27 unique articles and
+Yahoo returned 50 feed headlines. The briefing had nine candidates and one
+eligible ranked story.
+
+The two copies of the Jimmy Butler coaching-outfit article were held for review.
+The classifier now distinguishes an injured-player description before a name
+from a new injury development. It still accepts an actual clearance, surgery,
+or a report that the player was injured, and recognizes a signing as a roster
+move when that is the headline's event.
+
+This refresh had no qualifying injury candidates with availability updates, so
+it did not provide a live dashboard example of the expandable update history.
+That control appears only when a saved candidate has dated availability reports.
+Selecting a longer window does not guarantee one. The earlier standalone live
+query and automated integration tests cover that branch.
+
+All 156 backend tests passed after this fix. The local full-refresh response is
+saved in the ignored `artifacts/injury-refresh-check.json` file.

@@ -163,7 +163,17 @@ def inspect_article(article):
         numbers = sorted(set(re.findall(r"\b\d+\b", text)))
         event_key = "milestone:" + ",".join(numbers) if numbers else None
     else:
-        event = find_event(title_text)
+        injured = re.search(r"\binjured\b", title_text)
+        injury_is_description = bool(injured and (
+            title_text.startswith("injured ") or any(
+                person in title_text and injured.start() < title_text.index(person) for person in subjects)))
+        event_title = re.sub(r"\binjured\b", "", title_text) if injury_is_description else title_text
+        event = find_event(event_title)
+        if event is None and injury_is_description:
+            if reported_availability(clean_text(primary_title)):
+                event = "injury"
+            else:
+                return "review", "Injury describes the player, not a reported injury development", {}
         if event is None:
             event = find_event(clean_text(lead))
         if event is None and basketball_context and len(teams) == 2:
