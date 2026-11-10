@@ -32,11 +32,13 @@ AMBIGUOUS_TEAMS = {"heat", "magic", "thunder", "kings", "jazz", "bucks", "nets",
 NAME_STOP_WORDS = set("the a an to for and of in on at as by from with nba nfl nhl ncaa ucla november sunday saturday monday tuesday wednesday thursday friday head coach best bets injury update points win loss game report news star does what no one this season national basketball association eastern western conference finals".split())
 NAME_STOP_WORDS.update(" ".join(TEAM_NAMES.values()).split())
 NAME_STOP_WORDS.update("rare feat historic milestone all star game first time man claiming security home says claims son matches record records".split())
+NAME_STOP_WORDS.update("get major boost ahead announce named receive unwelcome unsettling scoring streak personal tribute biggest losers after before following amid marquee matchup against latest clash scare trade signing waiver".split())
+NAME_STOP_WORDS.update("sign signs signed waive waives waived acquire acquires acquired give gives out questionable doubtful returns ruled sidelined".split())
 STOP_WORDS = set("the a an to for and of in on at as by from with is are was were be has have his her their its this that after before more over past out will nba says said latest news update report reports".split())
 EVENT_WORDS = {
     "injury": r"\b(injury|injured|surgery|strain|tear|torn|re evaluated|out indefinitely|remains out|ruled out|sidelined)\b",
     "trade": r"\b(trade|traded|trades|acquire|acquired|deal)\b",
-    "contract": r"\b(signs|signed|signing|extension|waives|waived|contract)\b",
+    "contract": r"\b(sign|signs|signed|signing|extension|waive|waives|waived|contract)\b",
     "game": r"\b(win|wins|won|victory|defeat|defeats|beat|beats|scored|scores|hold off|holds off|past cavs|over cavs)\b|\b(leads?|lifts?)\b.{0,70}\bpast\b",
 }
 BODY_PARTS = {"knee", "ankle", "hamstring", "thumb", "wrist", "shoulder", "foot", "hand", "back", "elbow", "calf", "hip", "finger"}
@@ -69,11 +71,17 @@ def find_teams(text, basketball_context=False):
 
 def find_people(text):
     names = set()
-    for name in re.findall(r"\b[A-Z][\w'-]+\s+[A-Z][\w'-]+\b", text):
+    for name in re.findall(r"(?<![\w'-])(?=([A-Z][\w'-]+\s+[A-Z][\w'-]+)\b)", text):
         words = clean_text(name).split()
-        if len(words) == 2 and not set(words) & NAME_STOP_WORDS:
+        if len(words) >= 2 and not set(words) & NAME_STOP_WORDS:
             names.add(" ".join(words))
     return sorted(names)
+
+
+def find_event(text):
+    matches = [(match.start(), kind) for kind, pattern in EVENT_WORDS.items()
+               if (match := re.search(pattern, text))]
+    return min(matches)[1] if matches else None
 
 
 def has_nba_context(article):
@@ -89,7 +97,7 @@ def inspect_article(article):
     title = article["title"]
     description = article.get("description") or ""
     excerpt = article.get("content_excerpt") or ""
-    lead = re.split(r"[.!?]\s", description or excerpt, maxsplit=1)[0]
+    lead = re.split(r"(?<!\b[A-Za-z])[.!?]\s", description or excerpt, maxsplit=1)[0]
     main_text = title + " " + lead
     title_text = clean_text(title)
     text = clean_text(main_text)
@@ -112,6 +120,8 @@ def inspect_article(article):
         return "review", "Reaction or commentary rather than direct event reporting", {}
     if re.search(r"\bexplains\b.*\bquote\b", title_text):
         return "review", "Reaction or commentary rather than direct event reporting", {}
+    if re.search(r"\b(biggest (winners|losers)|salary cap repercussions|silver lining|had interest|previously interested|no urgency to trade)\b", title_text):
+        return "review", "Transaction analysis or prior interest, not a new reported move", {}
     if re.search(r"\binjury report\b", title_text) and re.search(r"\b(game|vs|at|starters)\b", title_text):
         return "review", "Pregame availability list rather than one clear injury development", {}
     teams = find_teams(main_text, basketball_context)
@@ -119,7 +129,11 @@ def inspect_article(article):
         return "review", "Question or speculation rather than a specific reported development", {}
     if re.search(r"\b(endorsement|shoe deal|sponsorship)\b", text):
         return "review", "Commercial partnership, not a player roster transaction", {}
-    people = find_people(main_text)
+    headline_people = find_people(title)
+    lead_people = find_people(lead)
+    people = sorted(set(headline_people) | set(lead_people))
+    primary_title = re.split(r"\b(after|before|following|amid)\b", title, maxsplit=1, flags=re.IGNORECASE)[0]
+    subjects = find_people(primary_title) or headline_people or lead_people
     event_key = None
     if basketball_context and re.search(r"\bhost\b.*\bnba all star game\b", title_text):
         year = re.search(r"\b20\d{2}\b", title_text)
@@ -137,9 +151,9 @@ def inspect_article(article):
         numbers = sorted(set(re.findall(r"\b\d+\b", text)))
         event_key = "milestone:" + ",".join(numbers) if numbers else None
     else:
-        event = next((kind for kind, pattern in EVENT_WORDS.items() if re.search(pattern, title_text)), None)
+        event = find_event(title_text)
         if event is None:
-            event = next((kind for kind, pattern in EVENT_WORDS.items() if re.search(pattern, text)), None)
+            event = find_event(clean_text(lead))
         if event is None and basketball_context and len(teams) == 2:
             has_score = re.search(r"\b\d{2,3}[-–]\d{2,3}\b", main_text)
             has_result = re.search(r"\b(final score|loses|lost|routs?|humiliate[sd]?|blot out|blots out)\b", title_text)
@@ -151,12 +165,30 @@ def inspect_article(article):
         return "review", "No clear NBA team in the headline or opening description", {}
     if event == "injury" and re.search(r"\b(questions whether|injury problems|offseason workouts|injury trends)\b", text) and not BODY_PARTS & set(text.split()):
         return "review", "General injury discussion without a specific injury development", {}
+    if event == "injury" and len(subjects) > 1:
+        return "review", "Multiple possible injury subjects need review", {}
+    injury_text = text
+    if event == "injury" and subjects:
+        lead_text = clean_text(lead)
+        other_people = [lead_text.index(person) for person in lead_people if person not in subjects and person in lead_text]
+        if other_people:
+            injury_text = title_text + " " + lead_text[:min(other_people)]
+    transaction_action = None
+    if event == "contract":
+        primary_text = clean_text(primary_title)
+        if re.search(r"\bwaiv(e|es|ed)\b", primary_text):
+            transaction_action = "waiver"
+        elif "extension" in primary_text:
+            transaction_action = "extension"
+        elif re.search(r"\bsign(s|ed|ing)?\b", primary_text):
+            transaction_action = "signing"
     if event == "game":
         teams = find_teams(main_text + " " + excerpt, basketball_context)
         if len(teams) != 2:
             return "review", "Game report needs two clear teams", {}
-    features = dict(event=event, teams=teams, people=people, event_key=event_key, context_basis=context_basis,
-                    body_parts=sorted(BODY_PARTS & set(text.split())),
+    features = dict(event=event, teams=teams, people=people, subjects=subjects, transaction_action=transaction_action,
+                    event_key=event_key, context_basis=context_basis,
+                    body_parts=sorted(BODY_PARTS & set(injury_text.split())),
                     terms=sorted(set(text.split()) - STOP_WORDS),
                     lead=clean_text(lead), copy_excerpt=clean_text(excerpt or description)[:220],
                     game_scores=sorted({score.replace("–", "-") for score in re.findall(r"\b\d{2,3}[-–]\d{2,3}\b", main_text + " " + excerpt)}),
@@ -193,8 +225,12 @@ def same_event(left, right):
             second_scores = {tuple(sorted(map(int, score.split("-")))) for score in second["game_scores"]}
             return bool(first_scores & second_scores)
         return bool(set(first["people"]) & set(second["people"])) or similarity(first["terms"], second["terms"]) >= 0.45
-    if not set(first["people"]) & set(second["people"]):
+    if not set(first.get("subjects", first["people"])) & set(second.get("subjects", second["people"])):
         return False
+    if first["event"] == "contract":
+        first_action, second_action = first.get("transaction_action"), second.get("transaction_action")
+        if first_action and second_action and first_action != second_action:
+            return False
     if first["body_parts"] and second["body_parts"] and first["body_parts"] != second["body_parts"]:
         return False
     return similarity(first["terms"], second["terms"]) >= 0.55

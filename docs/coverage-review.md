@@ -64,3 +64,34 @@ folder `artifacts/coverage-comparison/`. Backend and frontend tests cover the
 classification and source-display changes. This trial does not establish rights
 to reuse full article text or resolve the source-use limitations documented in
 [news-sources.md](news-sources.md).
+
+## Injury subjects and transaction context
+
+A subsequent offline review used the same 30 saved articles to improve the
+classification rules. No additional API requests were made.
+
+- Injury grouping now uses the player named in the main headline clause. A
+  second player mentioned in the opening description cannot corroborate that
+  player's separate injury. Body parts mentioned only after the other player's
+  name are not assigned to the headline subject.
+- Capitalized headline wording, accents, and hyphenated player names are handled
+  more consistently. Time abbreviations such as `p.m.` no longer cut off injury
+  details in the opening sentence.
+- The first event cue in a headline determines its event type. A waiver headline
+  referring to a later-mentioned trade is classified as a roster move. Signing,
+  extension, and waiver actions do not merge when their identified actions differ.
+- Prior interest, biggest-winner or loser reactions, and explicit statements
+  that a team has no urgency to trade are held for review.
+
+Reprocessing kept seven injury reports and five game reports. The trade query
+now has nine review items and one included roster move, the Dalen Terry waiver.
+It supplies no direct corroborated trade event. The injury query still has one
+eligible candidate, while the Quentin Grimes injury remains separate from the
+Dončić injury. All 147 backend tests passed, including the new regression cases.
+
+These remain name and phrase heuristics. They do not identify every player,
+resolve all availability changes, or establish original authorship. Automatic
+targeted searches remain limited to games while injury episode matching and
+source attribution need further review. Existing saved briefings are unchanged
+until another refresh. Reprocessed files end in `-subject-review.json` inside
+the ignored comparison folder.

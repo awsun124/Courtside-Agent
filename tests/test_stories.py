@@ -218,6 +218,68 @@ class StoryTests(unittest.TestCase):
         self.assertEqual(result['decisions'], {'review': 3})
         self.assertEqual(result['stories'], [])
 
+    def test_injury_subject_does_not_include_another_player_in_the_lead(self):
+        first = article("Lakers Get Quentin Grimes Injury Scare vs Pistons",
+                        "The NBA Lakers faced a Quentin Grimes injury scare with Luka Doncic already out because of back tightness.")
+        second = article("Luka Doncic injury update for Lakers",
+                         "Luka Doncic is out for the NBA Lakers with a back injury.", url="https://other.com/injury")
+        result = process_report(report([first, second]))
+        grimes = result['articles'][0]['features']
+        self.assertEqual(grimes['subjects'], ['quentin grimes'])
+        self.assertEqual(grimes['body_parts'], [])
+        self.assertEqual(len(result['stories']), 2)
+
+    def test_title_case_and_accents_do_not_hide_the_injury_subject(self):
+        first = article("Lakers Receive Unwelcome Luka Doncic Injury News",
+                        "Luka Doncic is questionable for the NBA Lakers because of back tightness.")
+        second = article("Luka Dončić injury update for Lakers",
+                         "Luka Dončić has back tightness for the NBA Lakers.", url="https://other.com/injury")
+        result = process_report(report([first, second]))
+        for saved in result['articles']:
+            self.assertEqual(saved['features']['subjects'], ['luka doncic'])
+        self.assertEqual(len(result['stories']), 1)
+
+    def test_waiver_is_not_the_background_trade(self):
+        saved = article("Thunder Waive Dalen Terry After Nique Clifford Trade",
+                        "The NBA Thunder waived Dalen Terry after acquiring Nique Clifford.")
+        features = process_report(report([saved]))['articles'][0]['features']
+        self.assertEqual(features['event'], 'contract')
+        self.assertEqual(features['transaction_action'], 'waiver')
+        self.assertEqual(features['subjects'], ['dalen terry'])
+
+    def test_signing_and_waiver_of_the_same_player_stay_separate(self):
+        first = article("Lakers sign Marcus Reed", "The NBA Lakers signed Marcus Reed.")
+        second = article("Lakers waive Marcus Reed", "The NBA Lakers waived Marcus Reed.", url="https://other.com/waiver")
+        self.assertEqual(len(process_report(report([first, second]))['stories']), 2)
+
+    def test_injury_details_after_a_time_abbreviation_are_not_lost(self):
+        saved = article("Luka Doncic injury update for Lakers",
+                        "Luka Doncic is questionable for the NBA Lakers game at 6 p.m. because of lower back tightness. Another player has a knee injury.")
+        features = process_report(report([saved]))['articles'][0]['features']
+        self.assertEqual(features['body_parts'], ['back'])
+
+    def test_hyphenated_player_names_are_recognized(self):
+        saved = article("Karl-Anthony Towns injury update for Knicks",
+                        "Karl-Anthony Towns has an ankle injury for the NBA Knicks.")
+        features = process_report(report([saved]))['articles'][0]['features']
+        self.assertEqual(features['subjects'], ['karl anthony towns'])
+
+    def test_signing_action_ignores_a_background_waiver(self):
+        saved = article("Lakers Sign Marcus Reed After Bulls Waive Jordan Smith",
+                        "The NBA Lakers signed Marcus Reed.")
+        features = process_report(report([saved]))['articles'][0]['features']
+        self.assertEqual(features['transaction_action'], 'signing')
+        self.assertEqual(features['subjects'], ['marcus reed'])
+
+    def test_prior_interest_and_reactions_do_not_corroborate_a_trade(self):
+        titles = ["Report: Lakers had interest in Nique Clifford before trade to Thunder",
+                  "Why the Nuggets are the Biggest Losers in Thunder Trade for Nique Clifford",
+                  "Warriors have no urgency to trade Porzingis, give up draft picks"]
+        for title in titles:
+            with self.subTest(title=title):
+                result = process_report(report([article(title, "A reaction to recent NBA trade news.")]))
+                self.assertEqual(result['articles'][0]['decision'], 'review')
+
     def test_dates_and_repeated_urls_are_checked_again(self):
         result = process_report(report([injury(), injury(url="https://example.com/story?utm_source=feed"),
                                         injury(url="https://other.com/old", published_at="2026-11-01T12:00:00Z"),
