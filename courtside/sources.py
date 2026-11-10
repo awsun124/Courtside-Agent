@@ -54,6 +54,33 @@ def merge_articles(articles):
     return list(merged.values())
 
 
+def collection_activity(source_id, source_name, purpose, records, previous, attempts, status, query=None, note=None):
+    previous_urls = {canonical_url(article["url"]) for article in previous}
+    current_urls = {canonical_url(article["url"]) for article in records}
+    previous_publishers = {article["publisher_name"] for article in previous}
+    publishers = {article["publisher_name"] for article in records}
+    return dict(source_id=source_id, source_name=source_name, purpose=purpose, query=query,
+                status=status, requests=len(attempts), returned_results=sum(attempt.get("count", 0) for attempt in attempts),
+                added_articles=len(current_urls - previous_urls), publisher_labels=len(publishers),
+                added_publisher_labels=len(publishers - previous_publishers), note=note)
+
+
+def search_activity(report, previous, purpose, query):
+    attempts = report["attempts"]
+    failed = any(attempt["status"] == "failed" for attempt in attempts)
+    succeeded = any(attempt["status"] == "ok" for attempt in attempts)
+    status = "failed" if failed and not succeeded else "partial" if failed or not report["complete_available_results"] else "ok"
+    note = "Some matches were not downloaded." if status == "partial" else None
+    if failed:
+        limited = any("rate or quota" in attempt.get("error", "").lower() for attempt in attempts)
+        note = "Rate or quota limit reached. No retry was made." if limited else "The search could not finish. No retry was made."
+    entry = collection_activity("gnews", "GNews", purpose, report["articles"], previous, attempts, status, query, note)
+    entry.update(window_start=report["requested_start"], window_end=report["searchable_end"])
+    if purpose == "corroboration":
+        entry["topic"] = "injury" if query.endswith(" injury") else "game"
+    return entry
+
+
 def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_transport=None,
                     news_transport=None, clock=time.monotonic, sleep=time.sleep):
     feed_ids = load_sources(sources_file)
@@ -64,11 +91,24 @@ def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_trans
         feed_options["transport"] = feed_transport
     feed_articles, statuses, attempts = collect_feeds(feed_ids, start, now, **feed_options)
     articles = list(feed_articles)
+    activity, previous_feed_articles = [], []
+    for source in statuses:
+        records = [article for article in feed_articles if source["id"] in article.get("collection_sources", [])]
+        source_attempts = [attempt for attempt in attempts if attempt["source"] == source["id"]]
+        note = "Feed snapshot only. This may not cover the full window."
+        if source["status"] == "failed":
+            note = "Feed request failed."
+        elif source["status"] == "skipped":
+            note = "Feed time budget exhausted."
+        activity.append(collection_activity(source["id"], source["name"], "feed", records, previous_feed_articles,
+                                            source_attempts, source["status"], note=note))
+        previous_feed_articles.extend(records)
     news_status = dict(id="gnews", name="GNews", kind="api", status="unconfigured", article_count=0,
                        collected_at=None, delay_hours=12, complete_window=False,
                        note="The free plan excludes the latest 12 hours.")
     statuses.insert(0, news_status)
     remaining = deadline - clock()
+    target_note = "GNews is not configured." if not api_key else "Collection time budget exhausted."
     if api_key and remaining > 1:
         discovery_budget = max(1, args.max_requests - 1)
         options = Namespace(**{**vars(args), "max_seconds": remaining, "max_requests": discovery_budget})
@@ -77,17 +117,23 @@ def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_trans
             kwargs["transport"] = news_transport
         try:
             report = collect_articles(options, api_key, now, **kwargs)
+            activity.append(search_activity(report, articles, "discovery", args.query))
             for attempt in report["attempts"]:
                 attempt.update(purpose="discovery", query=args.query)
             query = None
+            target_note = "The request budget allows discovery only."
             if args.max_requests > discovery_budget and not any(attempt["status"] == "failed" for attempt in report["attempts"]):
                 query = corroboration_query(articles + report["articles"], now - timedelta(hours=12))
+                target_note = "No eligible game or specific injury candidate was available before the source delay cutoff." if not query else "Collection time budget exhausted."
+            elif any(attempt["status"] == "failed" for attempt in report["attempts"]):
+                target_note = "Discovery failed, so the targeted search was skipped."
             if query and deadline - clock() > 3:
                 sleep(2)
                 remaining = deadline - clock()
                 if remaining > 1:
                     focused_options = Namespace(**{**vars(args), "query": query, "max_requests": 1, "max_seconds": remaining})
                     focused = collect_articles(focused_options, api_key, now, **kwargs)
+                    activity.append(search_activity(focused, articles + report["articles"], "corroboration", query))
                     report["articles"] = merge_articles(report["articles"] + focused["articles"])
                     report["attempts"].extend({**attempt, "purpose": "corroboration", "query": query} for attempt in focused["attempts"])
                     report["complete_available_results"] = False
@@ -104,10 +150,16 @@ def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_trans
         except SourceError:
             attempts.append(dict(source="gnews", status="failed", error="GNews unavailable"))
             news_status.update(status="failed", error="GNews unavailable")
+            target_note = "Discovery failed, so the targeted search was skipped."
     elif api_key:
         news_status.update(status="skipped", note="Collection time budget exhausted")
     else:
         news_status["note"] = "No GNews key configured. Only enabled feeds were requested."
+    if not any(entry["purpose"] == "discovery" for entry in activity):
+        activity.append(collection_activity("gnews", "GNews", "discovery", [], [],
+            [attempt for attempt in attempts if attempt.get("source") == "gnews"], news_status["status"], note=news_status.get("note") or "GNews unavailable."))
+    if not any(entry["purpose"] == "corroboration" for entry in activity):
+        activity.append(collection_activity("gnews", "GNews", "corroboration", [], [], [], "skipped", note=target_note))
     usable = any(status["status"] in {"ok", "partial"} for status in statuses)
     if not usable:
         raise SourceError("No configured source completed a request. The previous briefing is unchanged.")
@@ -116,4 +168,4 @@ def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_trans
                 requested_start=format_time(start), requested_end=format_time(now), searchable_end=available_end,
                 freshness_delay_hours=0, complete_available_results=False,
                 stop_reason="Feed snapshots and bounded API results are partial coverage",
-                articles=merge_articles(articles), sources=statuses, attempts=attempts)
+                articles=merge_articles(articles), sources=statuses, attempts=attempts, collection_activity=activity)

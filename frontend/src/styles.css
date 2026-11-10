@@ -287,6 +287,9 @@ details > summary:hover { color: var(--accent); }
 }
 
 .ranking-page { max-width: 1060px; }
+.collection-activity { list-style: none; }
+.collection-query span { overflow-wrap: anywhere; color: var(--ink); }
+.collection-failure { color: #823c2a; }
 .ranking-page .page-intro { padding-bottom: 40px; }
 .ranking-page .intro-copy { max-width: 650px; }
 .ranking-section { padding: 34px 0; border-top: 1px solid var(--line); }

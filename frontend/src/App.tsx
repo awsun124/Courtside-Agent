@@ -5,6 +5,7 @@ import SampleInvestigation from './SampleInvestigation'
 import { useBriefing } from './useBriefing'
 import SiteHeader from './SiteHeader'
 import RankingPage from './RankingPage'
+import CollectionActivity from './CollectionActivity'
 
 export default function App() {
   return window.location.pathname.replace(/\/$/, '') === '/ranking' ? <RankingPage /> : <Dashboard />
@@ -87,6 +88,7 @@ function Dashboard() {
             <a className="method-link" href={mode === 'sample' ? '/ranking?mode=sample' : '/ranking'}>Read the methodology<Icon name="arrow" /></a>
           </section>
 
+          {briefing && <CollectionActivity briefing={briefing} />}
           {!!briefing?.sources?.length && <details className="sidebar-details"><summary>Collection sources<Icon name="chevron" /></summary><div className="details-body">
             <ul className="history-list">{briefing.sources.map(source => <li key={source.id}>
               <strong>{source.name}</strong><p>{source.status.replaceAll('_', ' ')} · {plural(source.article_count, 'article')}</p>

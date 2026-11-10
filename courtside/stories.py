@@ -354,6 +354,7 @@ def process_report(report):
                 window_start=report["requested_start"], window_end=report["searchable_end"],
                 freshness_delay_hours=report.get("freshness_delay_hours", 12),
                 sources=report.get("sources", []), collected_at=report["generated_at"], articles=list(articles.values()),
+                collection_activity=report.get("collection_activity", []),
                 decisions=dict(Counter(article["decision"] for article in articles.values())),
                 skipped_records=skipped, stories=group_articles(included), ranked=False)
 

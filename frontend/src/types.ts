@@ -91,6 +91,22 @@ export interface Briefing {
   warnings: string[]
   sources?: CollectionSource[]
   source_errors?: string[]
+  collection_activity?: {
+    source_id: string
+    source_name: string
+    purpose: 'discovery' | 'corroboration' | 'feed'
+    topic?: 'injury' | 'game'
+    query: string | null
+    status: string
+    requests: number
+    returned_results: number
+    added_articles: number
+    publisher_labels: number
+    added_publisher_labels: number
+    note?: string | null
+    window_start?: string
+    window_end?: string
+  }[]
   settings: { coverage_weight: number; momentum_weight: number; freshness_weight: number; minimum_publishers: number }
   stories: Story[]
   candidates: Story[]

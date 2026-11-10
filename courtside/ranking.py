@@ -225,6 +225,7 @@ def rank_stories(result, settings=None):
                 data_mode=mode, source=result.get("source", "GNews"), experimental=bool(warnings),
                 warnings=warnings, as_of=as_of.isoformat(), window_start=start.isoformat(), window_end=end.isoformat(),
                 sources=result.get("sources", []), processing_run_id=result.get("run_id"), settings=asdict(settings),
+                collection_activity=result.get("collection_activity", []),
                 stories=selected, candidates=candidates)
 
 

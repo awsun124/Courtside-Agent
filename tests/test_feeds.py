@@ -11,6 +11,8 @@ from urllib.parse import parse_qs, urlsplit
 from courtside.feeds import collect_feeds, load_sources, parse_feed
 from courtside.sources import collect_sources, corroboration_query, merge_articles
 from courtside.stories import process_report
+from courtside.ranking import rank_stories
+from courtside.storage import save_run, save_briefing, read_briefings, read_run
 from scripts.validate_gnews import SourceError
 
 NOW = datetime(2026, 11, 9, 12, tzinfo=timezone.utc)
@@ -183,9 +185,55 @@ class FeedTests(unittest.TestCase):
                                  news_transport=news, sleep=lambda seconds: None)
         self.assertEqual(queries, ['NBA', 'marcus reed ankle injury'])
         self.assertEqual(len(report['attempts']), 3)
+        target = report['collection_activity'][-1]
+        self.assertEqual(target['topic'], 'injury')
+        self.assertEqual(target['query'], 'marcus reed ankle injury')
+        self.assertEqual(target['added_articles'], 1)
+        self.assertEqual(sum(entry['requests'] for entry in report['collection_activity']), 3)
         injuries = [story for story in process_report(report)['stories'] if story['event'] == 'injury']
         self.assertEqual(len(injuries), 1)
         self.assertEqual(injuries[0]['reporting_groups'], 2)
+
+    def test_activity_counts_only_additional_urls_and_publisher_labels(self):
+        calls = []
+        row = {'title': 'NBA Lakers beat Pistons 110-102', 'url': 'https://example.com/game',
+               'publishedAt': '2026-11-08T18:00:00Z', 'source': {'name': 'Example Sports'}}
+        def news(url, *unused):
+            calls.append(url)
+            rows = [row] if len(calls) == 1 else [row, {**row, 'url': 'https://example.com/follow-up'}]
+            return {'totalArticles': len(rows), 'articles': rows}
+        args = Namespace(days=3, query='NBA', max_requests=2, max_seconds=90, timeout=30)
+        report = collect_sources(args, 'test-key', NOW, feed_transport=lambda *args: feed(),
+                                 news_transport=news, sleep=lambda seconds: None)
+        target = report['collection_activity'][-1]
+        self.assertEqual(target['returned_results'], 2)
+        self.assertEqual(target['added_articles'], 1)
+        self.assertEqual(target['publisher_labels'], 1)
+        self.assertEqual(target['added_publisher_labels'], 0)
+        self.assertNotIn('test-key', json.dumps(report['collection_activity']))
+        self.assertNotIn('https://', json.dumps(report['collection_activity']))
+
+    def test_activity_is_saved_with_the_exact_briefing_and_processing_run(self):
+        args = Namespace(days=3, query='NBA', max_requests=1, max_seconds=90, timeout=30)
+        report = collect_sources(args, None, NOW, feed_transport=lambda *args: feed())
+        processed = process_report(report)
+        briefing = rank_stories(processed)
+        with tempfile.TemporaryDirectory() as folder:
+            database = Path(folder) / 'news.db'
+            run_id = save_run(processed, database)
+            briefing['processing_run_id'] = run_id
+            save_briefing(briefing, database)
+            self.assertEqual(read_run(database, run_id)['collection_activity'], report['collection_activity'])
+            self.assertEqual(read_briefings(database, 'live', limit=1)[0]['collection_activity'], report['collection_activity'])
+
+    def test_discovery_only_budget_records_why_no_targeted_search_ran(self):
+        args = Namespace(days=3, query='NBA', max_requests=1, max_seconds=90, timeout=30)
+        report = collect_sources(args, 'test-key', NOW, feed_transport=lambda *args: feed(),
+                                 news_transport=lambda *args: {'totalArticles': 0, 'articles': []})
+        target = report['collection_activity'][-1]
+        self.assertEqual(target['status'], 'skipped')
+        self.assertEqual(target['requests'], 0)
+        self.assertIn('budget', target['note'])
 
     def test_vague_or_recent_injuries_do_not_trigger_a_targeted_search(self):
         for title, date in [('Lakers announce Marcus Reed injury news', 'Sun, 08 Nov 2026 18:00:00 GMT'),
@@ -210,6 +258,10 @@ class FeedTests(unittest.TestCase):
         self.assertEqual(report['sources'][0]['status'], 'partial')
         self.assertEqual(len(report['articles']), 2)
         self.assertEqual(report['attempts'][-1]['status'], 'failed')
+        target = report['collection_activity'][-1]
+        self.assertEqual(target['status'], 'failed')
+        self.assertEqual(target['added_articles'], 0)
+        self.assertIn('Rate or quota limit', target['note'])
 
     def test_expired_budget_after_pause_skips_corroboration(self):
         elapsed = [0]
