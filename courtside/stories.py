@@ -136,6 +136,11 @@ def inspect_article(article):
         event = next((kind for kind, pattern in EVENT_WORDS.items() if re.search(pattern, title_text)), None)
         if event is None:
             event = next((kind for kind, pattern in EVENT_WORDS.items() if re.search(pattern, text)), None)
+        if event is None and basketball_context and len(teams) == 2:
+            has_score = re.search(r"\b\d{2,3}[-–]\d{2,3}\b", main_text)
+            has_result = re.search(r"\b(final score|loses|lost|routs?|humiliate[sd]?|blot out|blots out)\b", title_text)
+            if has_score and has_result:
+                event = "game"
     if event is None:
         return "review", "No specific supported event in the headline or opening description", {}
     if not teams and event not in {"league", "off_court", "milestone"}:
@@ -177,8 +182,12 @@ def same_event(left, right):
             return same_key
         return same_key and similarity(first["terms"], second["terms"]) >= 0.55
     if first["event"] == "game":
-        if first["game_scores"] and second["game_scores"] and not set(first["game_scores"]) & set(second["game_scores"]):
+        if first["teams"] != second["teams"]:
             return False
+        if first["game_scores"] and second["game_scores"]:
+            first_scores = {tuple(sorted(map(int, score.split("-")))) for score in first["game_scores"]}
+            second_scores = {tuple(sorted(map(int, score.split("-")))) for score in second["game_scores"]}
+            return bool(first_scores & second_scores)
         return first["teams"] == second["teams"] and similarity(first["terms"], second["terms"]) >= 0.45
     if not set(first["people"]) & set(second["people"]):
         return False

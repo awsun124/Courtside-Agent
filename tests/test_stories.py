@@ -168,6 +168,27 @@ class StoryTests(unittest.TestCase):
         result = process_report(report([first, second]))
         self.assertEqual(len(result["stories"]), 2)
 
+    def test_final_score_headlines_group_despite_different_wording_and_score_order(self):
+        articles = [article("NBA final score: Spurs blot out Suns, 122-96", ""),
+                    article("Phoenix Suns lose as San Antonio Spurs win 96-122 NBA matchup", "",
+                            url="https://other.com/game", publisher="Other Sports")]
+        result = process_report(report(articles))
+        self.assertEqual(result["decisions"], {"included": 2})
+        self.assertEqual(len(result["stories"]), 1)
+        self.assertEqual(result["stories"][0]["reporting_groups"], 2)
+
+    def test_score_alone_does_not_turn_a_preview_into_a_result(self):
+        saved = article("NBA Suns at Spurs preview after a 122-96 meeting", "")
+        result = process_report(report([saved]))
+        self.assertEqual(result["articles"][0]["decision"], "review")
+
+    def test_same_teams_and_score_on_different_days_stay_separate(self):
+        first = article("NBA Suns lost to Spurs 96-122", "", date="2026-11-06T12:00:00Z")
+        second = article("NBA final score: Spurs defeat Suns 122-96", "",
+                         url="https://other.com/game", date="2026-11-08T12:00:00Z")
+        result = process_report(report([first, second]))
+        self.assertEqual(len(result["stories"]), 2)
+
     def test_dates_and_repeated_urls_are_checked_again(self):
         result = process_report(report([injury(), injury(url="https://example.com/story?utm_source=feed"),
                                         injury(url="https://other.com/old", published_at="2026-11-01T12:00:00Z"),
