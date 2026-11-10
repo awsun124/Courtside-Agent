@@ -2,7 +2,7 @@
 
 Expand Collection activity in the dashboard sidebar to see what ran for the
 saved briefing. It lists the feed snapshot, the broad discovery search, and
-the targeted injury or game search. It records skipped searches and their
+up to two targeted injury or game searches. It records skipped searches and their
 reasons rather than implying that every refresh searches for an injury.
 
 Each entry includes its source, query where applicable, request count, outcome,
@@ -60,3 +60,43 @@ The ignored local response is `artifacts/collection-activity-check.json`.
 Automated tests cover incremental counts, duplicate URLs, publisher labels,
 snapshot persistence, failed requests, skipped requests, older briefings, and
 sample mode.
+
+## Choosing searches efficiently
+
+The default three-request GNews budget now permits one discovery request and
+up to two distinct targeted requests. Larger budgets use the remainder for
+discovery. A one-request budget stays discovery-only. Feed requests keep their
+existing separate allowance. Unused requests are not spent merely to fill the
+budget, and a source failure stops the remaining targeted requests.
+
+The planner prioritizes candidates closest to the configured reporting-group
+minimum, then newer coverage. It uses the same publisher, domain, alias, and
+copy rules as numerical ranking. Candidates already meeting that minimum are
+not targeted. After each search, it rebuilds the groups so a second search is
+not spent on a story the first search already corroborated.
+
+The default service reads recent live briefing history from SQLite. A productive
+query waits one hour before it is selected again. A failed query, or one that
+adds no estimated reporting groups to the selected story, waits six hours. The
+latest actual attempt controls the wait. Old activity without group-gain metrics
+uses additional article URLs as a compatibility fallback. Sample briefings and
+skipped requests do not start cooldowns.
+
+Collection activity shows why a story was selected, its estimated reporting-group
+gain, and cooldown skips. This gain measures corroboration of the selected event,
+not merely new URLs returned by the query. It remains an estimate and can be
+wrong when event grouping or copy detection is wrong. Cooldowns favor breadth
+and may postpone checking another update from a single publisher.
+
+A controlled offline replay of two saved discovery seeds and their real saved
+GNews responses produced two eligible stories using three simulated requests:
+`NBA`, `thunder wizards`, and `luka doncic back injury`. The targeted searches
+added two and three estimated reporting groups respectively. This checks the
+planner's behavior, not its average live yield or the quality of generic NBA
+discovery. The default budget shifts one request from discovery to corroboration,
+which can reduce discovery breadth when few eligible seeds exist.
+
+The subsequent live refresh was refused by the app's existing daily limit of
+30 source requests. That limit was preserved. No live improvement is claimed
+for this planner yet. The replay is saved locally in the ignored
+`artifacts/search-planner-replay.json` file.

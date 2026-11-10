@@ -17,10 +17,12 @@ export default function CollectionActivity({ briefing }: { briefing: Briefing })
                 <strong>{entry.source_name} · {label}</strong>
                 <p className={entry.status === 'failed' ? 'collection-failure' : undefined}>{entry.status === 'ok' ? 'Succeeded' : entry.status === 'partial' ? 'Succeeded with partial coverage' : entry.status === 'failed' ? 'Failed' : entry.status === 'unconfigured' ? 'Not configured' : 'Skipped'} · {plural(entry.requests, 'request')}</p>
                 {entry.query && <p className="collection-query">Search: <span>{entry.query}</span></p>}
+                {entry.selection_reason && <p>{entry.selection_reason}</p>}
                 {entry.window_start && entry.window_end && <p>Search window: {formatDate(entry.window_start, true)} to {formatDate(entry.window_end, true)}</p>}
                 {entry.requests > 0 && <>
                   <p>{plural(entry.returned_results, 'result')} returned · {plural(entry.added_articles, 'new article URL')} added</p>
                   <p>{plural(entry.publisher_labels, 'publisher label')} in these results · {entry.added_publisher_labels} new to this collection</p>
+                  {entry.reporting_groups_added !== undefined && <p>{plural(entry.reporting_groups_added, 'estimated reporting group')} added to the selected story</p>}
                 </>}
                 {entry.note && <p>{entry.note}</p>}
               </li>

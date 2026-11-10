@@ -31,10 +31,14 @@ class NewsService:
         self.settings_file = Path(settings_file or PROJECT_ROOT / "config/ranking.json")
         self.custom_collector = collector is not None
         self.sources_file = Path(sources_file or DEFAULT_SOURCES)
-        self.collector = collector or (lambda options, key, now: collect_sources(options, key, now, self.sources_file))
+        self.collector = collector or self.collect
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.investigation_file = investigation_file
         initialize_database(self.database)
+
+    def collect(self, options, key, now):
+        history = read_briefings(self.database, "live", limit=50)
+        return collect_sources(options, key, now, self.sources_file, previous_briefings=history)
 
     def latest(self, mode):
         saved = read_briefings(self.database, mode, limit=1)
@@ -91,7 +95,8 @@ class NewsService:
                 except SourceError:
                     if self.custom_collector:
                         raise RefreshError(503, "Configure GNEWS_API_KEY on the server before a live refresh. Sample mode is available explicitly.") from None
-                options = Namespace(days=days, query="NBA", max_requests=max_requests, max_seconds=90, timeout=30)
+                options = Namespace(days=days, query="NBA", max_requests=max_requests, max_seconds=90, timeout=30,
+                                    minimum_publishers=settings.minimum_publishers, publisher_aliases=settings.publisher_aliases)
                 try:
                     report = self.collector(options, api_key, now)
                 except SourceError:

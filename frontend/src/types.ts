@@ -103,6 +103,8 @@ export interface Briefing {
     added_articles: number
     publisher_labels: number
     added_publisher_labels: number
+    reporting_groups_added?: number
+    selection_reason?: string
     note?: string | null
     window_start?: string
     window_end?: string

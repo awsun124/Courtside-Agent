@@ -3,16 +3,18 @@ from argparse import Namespace
 from datetime import timedelta
 from pathlib import Path
 import time
+from urllib.parse import urlsplit
 
 from scripts.validate_gnews import collect_articles, SourceError
 from scripts.validate_gdelt import canonical_url, format_time
 from .feeds import collect_feeds, load_sources
-from .stories import inspect_article, group_articles, parse_date
+from .stories import inspect_article, group_articles, parse_date, clean_text
+from .ranking import reporting_groups
 
 DEFAULT_SOURCES = Path(__file__).resolve().parents[1] / "config/sources.json"
 
 
-def corroboration_query(articles, available_end):
+def story_candidates(articles, available_end, publisher_aliases=None):
     candidates = []
     for article in merge_articles(articles):
         if parse_date(article["published_at"]) > available_end:
@@ -20,21 +22,60 @@ def corroboration_query(articles, available_end):
         decision, _, features = inspect_article(article)
         if decision == "included" and features["event"] in {"game", "injury"}:
             candidates.append({**article, "canonical_url": canonical_url(article["url"]), "features": features})
+    aliases = publisher_aliases or {}
+    for article in candidates:
+        domain = urlsplit(article["canonical_url"]).hostname
+        article.update(publisher_host=domain, publisher_id=clean_text(aliases.get(domain, article["publisher_name"])))
     groups = group_articles(candidates)
-    for group in sorted(groups, key=lambda story: story["latest_published_at"], reverse=True):
-        if group["reporting_groups"] != 1:
-            continue
-        article = next(article for article in candidates if article["canonical_url"] in group["article_urls"])
-        features = article["features"]
-        if features["event"] == "game":
-            return " ".join(team.rsplit(" ", 1)[-1] for team in features["teams"])
-        for article in sorted(candidates, key=lambda item: item["published_at"], reverse=True):
-            if article["canonical_url"] not in group["article_urls"]:
-                continue
+    for group in groups:
+        members = [article for article in candidates if article["canonical_url"] in group["article_urls"]]
+        group["reporting_groups"] = len(reporting_groups(members))
+        group["query"] = None
+        for article in sorted(members, key=lambda item: parse_date(item["published_at"]), reverse=True):
             features = article["features"]
-            if len(features["subjects"]) == 1 and len(features["body_parts"]) == 1:
-                return " ".join([features["subjects"][0], features["body_parts"][0], "injury"])
-    return None
+            if features["event"] == "game":
+                group["query"] = " ".join(team.rsplit(" ", 1)[-1] for team in features["teams"])
+            elif len(features["subjects"]) == 1 and len(features["body_parts"]) == 1:
+                group["query"] = " ".join([features["subjects"][0], features["body_parts"][0], "injury"])
+            if group["query"]:
+                break
+    return groups
+
+
+def plan_searches(articles, available_end, now, previous_briefings=(), minimum_publishers=2, publisher_aliases=None):
+    recent, seen_queries = {}, set()
+    for briefing in sorted(previous_briefings, key=lambda item: parse_date(item["as_of"]), reverse=True):
+        if briefing.get("data_mode", "live") != "live":
+            continue
+        age = (now - parse_date(briefing["as_of"])).total_seconds() / 3600
+        if not 0 <= age < 6:
+            continue
+        for entry in briefing.get("collection_activity", []):
+            if entry.get("purpose") != "corroboration" or not entry.get("requests") or not entry.get("query"):
+                continue
+            query_key = clean_text(entry["query"])
+            if query_key in seen_queries:
+                continue
+            seen_queries.add(query_key)
+            gain = entry.get("reporting_groups_added", entry.get("added_articles", 0))
+            wait = 6 if entry.get("status") == "failed" or gain == 0 else 1
+            if age < wait:
+                recent[query_key] = "Recent search added no reporting groups or failed. Waiting up to six hours." if wait == 6 else "This story was searched within the last hour. Trying other candidates first."
+    planned, seen = [], set()
+    groups = story_candidates(articles, available_end, publisher_aliases)
+    groups.sort(key=lambda group: (-group["reporting_groups"], -parse_date(group["latest_published_at"]).timestamp(), group["id"]))
+    for group in groups:
+        query = group["query"]
+        if not query or group["reporting_groups"] >= minimum_publishers or query in seen:
+            continue
+        seen.add(query)
+        planned.append({**group, "skip_reason": recent.get(clean_text(query))})
+    return planned
+
+
+def corroboration_query(articles, available_end):
+    planned = plan_searches(articles, available_end, available_end + timedelta(hours=12))
+    return planned[0]["query"] if planned else None
 
 
 def merge_articles(articles):
@@ -82,7 +123,7 @@ def search_activity(report, previous, purpose, query):
 
 
 def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_transport=None,
-                    news_transport=None, clock=time.monotonic, sleep=time.sleep):
+                    news_transport=None, clock=time.monotonic, sleep=time.sleep, previous_briefings=()):
     feed_ids = load_sources(sources_file)
     deadline = clock() + args.max_seconds
     start = now - timedelta(days=args.days)
@@ -110,7 +151,7 @@ def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_trans
     remaining = deadline - clock()
     target_note = "GNews is not configured." if not api_key else "Collection time budget exhausted."
     if api_key and remaining > 1:
-        discovery_budget = max(1, args.max_requests - 1)
+        discovery_budget = max(1, args.max_requests - 2)
         options = Namespace(**{**vars(args), "max_seconds": remaining, "max_requests": discovery_budget})
         kwargs = dict(clock=clock, sleep=sleep)
         if news_transport is not None:
@@ -120,24 +161,46 @@ def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_trans
             activity.append(search_activity(report, articles, "discovery", args.query))
             for attempt in report["attempts"]:
                 attempt.update(purpose="discovery", query=args.query)
-            query = None
             target_note = "The request budget allows discovery only."
-            if args.max_requests > discovery_budget and not any(attempt["status"] == "failed" for attempt in report["attempts"]):
-                query = corroboration_query(articles + report["articles"], now - timedelta(hours=12))
-                target_note = "No eligible game or specific injury candidate was available before the source delay cutoff." if not query else "Collection time budget exhausted."
-            elif any(attempt["status"] == "failed" for attempt in report["attempts"]):
-                target_note = "Discovery failed, so the targeted search was skipped."
-            if query and deadline - clock() > 3:
+            attempted_queries, logged_skips = set(), set()
+            for _ in range(args.max_requests - discovery_budget):
+                if any(attempt["status"] == "failed" for attempt in report["attempts"]):
+                    target_note = "A search failed, so remaining targeted searches were skipped."
+                    break
+                planned = plan_searches(articles + report["articles"], now - timedelta(hours=12), now,
+                    previous_briefings, getattr(args, "minimum_publishers", 2), getattr(args, "publisher_aliases", None))
+                for candidate in planned:
+                    if candidate["skip_reason"] and candidate["query"] not in logged_skips and len(logged_skips) < 5:
+                        activity.append(collection_activity("gnews", "GNews", "corroboration", [], [], [], "skipped",
+                            candidate["query"], candidate["skip_reason"]))
+                        logged_skips.add(candidate["query"])
+                candidate = next((item for item in planned if not item["skip_reason"] and item["query"] not in attempted_queries), None)
+                if candidate is None:
+                    target_note = "No additional eligible candidate was available outside the recent-search cooldowns."
+                    break
+                query = candidate["query"]
+                if deadline - clock() <= 3:
+                    target_note = "Collection time budget exhausted."
+                    break
                 sleep(2)
                 remaining = deadline - clock()
+                if remaining <= 1:
+                    target_note = "Collection time budget exhausted."
+                    break
                 if remaining > 1:
+                    attempted_queries.add(query)
                     focused_options = Namespace(**{**vars(args), "query": query, "max_requests": 1, "max_seconds": remaining})
                     focused = collect_articles(focused_options, api_key, now, **kwargs)
-                    activity.append(search_activity(focused, articles + report["articles"], "corroboration", query))
+                    entry = search_activity(focused, articles + report["articles"], "corroboration", query)
+                    updated = story_candidates(articles + report["articles"] + focused["articles"], now - timedelta(hours=12), getattr(args, "publisher_aliases", None))
+                    matches = [group for group in updated if set(group["article_urls"]) & set(candidate["article_urls"])]
+                    entry["reporting_groups_added"] = max(0, max((group["reporting_groups"] for group in matches), default=0) - candidate["reporting_groups"])
+                    entry["selection_reason"] = f"Needs {getattr(args, 'minimum_publishers', 2)} reporting groups, found {candidate['reporting_groups']}."
+                    activity.append(entry)
                     report["articles"] = merge_articles(report["articles"] + focused["articles"])
                     report["attempts"].extend({**attempt, "purpose": "corroboration", "query": query} for attempt in focused["attempts"])
                     report["complete_available_results"] = False
-                    report["stop_reason"] = "Discovery and one targeted corroboration search provide partial coverage"
+                    report["stop_reason"] = "Discovery and targeted corroboration searches provide partial coverage"
             articles.extend(report["articles"])
             attempts.extend({**attempt, "source": "gnews"} for attempt in report["attempts"])
             failures = [attempt for attempt in report["attempts"] if attempt["status"] == "failed"]

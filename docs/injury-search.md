@@ -6,7 +6,7 @@ the targeted request, and failure handling are unchanged.
 
 ## Selection
 
-The collector considers the newest candidate with one estimated reporting group.
+The collector considers candidates below the configured reporting-group minimum.
 An injury is eligible only when its saved metadata identifies one player and
 one body part. The generated query is the normalized player name, body part,
 and `injury`, such as `luka doncic back injury`.
@@ -14,6 +14,11 @@ and `injury`, such as `luka doncic back injury`.
 All seed articles must be old enough for GNews's 12-hour delay. Vague injury
 headlines do not generate player-only searches. A one-request budget still
 runs discovery only. Trades remain outside automatic corroboration.
+
+The current multi-story planner can select up to two distinct targeted searches
+and uses recent activity to avoid repeated unproductive queries. See
+[collection-activity.md](collection-activity.md#choosing-searches-efficiently)
+for the budget split, priority, cooldowns, and verification limits.
 
 ## Keeping updates together
 
