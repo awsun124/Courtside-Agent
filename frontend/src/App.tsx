@@ -1,6 +1,7 @@
 import { formatDate, plural, timeAgo, windowDays } from './format'
 import { Icon } from './Icons'
 import StoryCard from './StoryCard'
+import SampleInvestigation from './SampleInvestigation'
 import { useBriefing } from './useBriefing'
 
 function Brand() {
@@ -56,6 +57,8 @@ export default function App() {
       {!state.error && failedAttempt && <div className="notice error-notice" role="alert"><strong>The last refresh did not finish.</strong><span>{briefing ? 'Showing the last saved briefing.' : 'No new briefing was saved.'}</span></div>}
       {isStale && <div className="notice"><strong>This briefing is getting old.</strong><span>It has been more than six hours since the last successful collection.</span></div>}
       {pendingWindow && <div className="notice"><strong>Refresh to load the past {days} {days === 1 ? 'day' : 'days'}.</strong><span>You’re still viewing the saved {actualDays}-day briefing.</span></div>}
+
+      <SampleInvestigation active={mode === 'sample'} />
 
       <div className="dashboard-layout">
         <section id="briefing" className="news-column" aria-label="NBA briefing" aria-busy={loading || refreshing}>

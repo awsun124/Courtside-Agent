@@ -45,9 +45,9 @@ def read_provider_settings(env_file):
     if path.is_file():
         for line in path.read_text().splitlines():
             name, separator, value = line.strip().partition("=")
-            if separator and name in {"ENABLE_LLM_CALLS", "LLM_API_KEY", "LLM_MODEL", "LLM_BASE_URL"}:
+            if separator and name in {"ENABLE_LLM_CALLS", "ENABLE_SAMPLE_AI", "LLM_API_KEY", "LLM_MODEL", "LLM_BASE_URL"}:
                 values[name] = value.strip().strip("\"'")
-    for name in ["ENABLE_LLM_CALLS", "LLM_API_KEY", "LLM_MODEL", "LLM_BASE_URL"]:
+    for name in ["ENABLE_LLM_CALLS", "ENABLE_SAMPLE_AI", "LLM_API_KEY", "LLM_MODEL", "LLM_BASE_URL"]:
         if name in os.environ:
             values[name] = os.environ[name]
     return values
@@ -57,9 +57,10 @@ class ChatProvider:
     name = "openai-compatible"
     uses_llm = True
 
-    def __init__(self, settings, env_file):
+    def __init__(self, settings, env_file, sample_only=False):
         config = read_provider_settings(env_file)
-        if config.get("ENABLE_LLM_CALLS", "false").lower() != "true":
+        enabled_name = "ENABLE_SAMPLE_AI" if sample_only else "ENABLE_LLM_CALLS"
+        if config.get(enabled_name, "false").lower() != "true":
             raise ValueError("LLM calls are disabled")
         self.api_key = config.get("LLM_API_KEY", "")
         self.model = config.get("LLM_MODEL", "")

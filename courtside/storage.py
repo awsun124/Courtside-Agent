@@ -76,6 +76,16 @@ CREATE TABLE IF NOT EXISTS investigations (
     FOREIGN KEY (briefing_id, story_id) REFERENCES story_scores(briefing_id, story_id),
     PRIMARY KEY (briefing_id, story_id)
 );
+CREATE TABLE IF NOT EXISTS sample_agent_runs (
+    id INTEGER PRIMARY KEY,
+    started_at TEXT NOT NULL,
+    lease_until TEXT NOT NULL,
+    completed_at TEXT,
+    status TEXT NOT NULL,
+    requests_used INTEGER NOT NULL,
+    result_json TEXT,
+    error TEXT
+);
 """
 
 
@@ -190,3 +200,31 @@ def finish_refresh(database, refresh_id, now, status, requests_used, briefing_id
     with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute("UPDATE refresh_attempts SET completed_at=?, status=?, requests_used=?, briefing_id=?, error=? WHERE id=?",
                            (format_time(now), status, requests_used, briefing_id, error, refresh_id))
+
+
+def start_sample_agent(database, now):
+    timestamp = format_time(now)
+    with closing(sqlite3.connect(database)) as connection, connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("UPDATE sample_agent_runs SET status='interrupted', completed_at=?, error='Previous run was interrupted' WHERE status='running' AND lease_until <= ?", (timestamp, timestamp))
+        running = connection.execute("SELECT id FROM sample_agent_runs WHERE status='running'").fetchone()
+        if running:
+            return dict(status_code=409, error="A sample investigation is already running", retry_after=5)
+        latest = connection.execute("SELECT started_at FROM sample_agent_runs ORDER BY id DESC LIMIT 1").fetchone()
+        if latest:
+            remaining = 60 - (now - parse_date(latest[0])).total_seconds()
+            if remaining > 0:
+                return dict(status_code=429, error="Wait a minute before another sample investigation", retry_after=max(1, int(remaining) + 1))
+        today = format_time(now.replace(hour=0, minute=0, second=0, microsecond=0))
+        used = connection.execute("SELECT COALESCE(SUM(requests_used), 0) FROM sample_agent_runs WHERE started_at >= ?", (today,)).fetchone()[0]
+        if used + 5 > 15:
+            next_day = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+            return dict(status_code=429, error="The daily limit of 15 sample AI requests has been reached", retry_after=max(1, int((next_day - now).total_seconds()) + 1))
+        run_id = connection.execute("INSERT INTO sample_agent_runs (started_at, lease_until, status, requests_used) VALUES (?, ?, 'running', 5)", (timestamp, format_time(now + timedelta(seconds=45)))).lastrowid
+    return dict(id=run_id)
+
+
+def finish_sample_agent(database, run_id, now, status, requests_used, result=None, error=None):
+    with closing(sqlite3.connect(database)) as connection, connection:
+        connection.execute("UPDATE sample_agent_runs SET completed_at=?, status=?, requests_used=?, result_json=?, error=? WHERE id=?",
+                           (format_time(now), status, requests_used, json.dumps(result) if result is not None else None, error, run_id))

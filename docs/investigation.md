@@ -117,6 +117,17 @@ and reasoning fields. Only validated tool calls enter the loop, and only retriev
 quotes can enter a final summary. Compatibility with other providers depends on
 their support for this tool schema and `max_completion_tokens`.
 
+### Sample dashboard investigation
+
+The sample edition has a separate, manual AI demonstration. Set
+`ENABLE_SAMPLE_AI=true` in the server environment to show it. This does not
+enable AI investigation of live coverage. The endpoint accepts no article text
+or URLs and uses only the fixed fictional scenario from `scripts/check_agent.py`.
+Each run allows at most five model requests and 20 seconds. SQLite enforces a
+one-minute cooldown and a 15-request daily limit across restarts. The result,
+tool activity, and evidence citations remain separate from briefing history.
+The model key stays on the server. The button is not called automatically.
+
 References: [function calling](https://developers.openai.com/api/docs/guides/function-calling)
 and [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
 

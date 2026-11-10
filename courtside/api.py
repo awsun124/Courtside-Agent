@@ -9,7 +9,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .service import NewsService, PROJECT_ROOT, RefreshError
-from .storage import read_briefings
+from .llm import ChatProvider
+from .investigation import InvestigationSettings
+from .storage import finish_sample_agent, read_briefings, start_sample_agent
 
 DataMode = Literal["live", "sample"]
 
@@ -19,6 +21,10 @@ class RefreshRequest(BaseModel):
     mode: DataMode = "live"
     days: int = Field(default=3, ge=1, le=7)
     max_requests: int = Field(default=3, ge=1, le=5)
+
+
+class SampleInvestigationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 def create_app(database=None, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None, sources_file=None):
@@ -66,6 +72,40 @@ def create_app(database=None, env_file=None, settings_file=None, collector=None,
         except RefreshError as error:
             headers = {"Retry-After": str(error.retry_after)} if error.retry_after else None
             raise HTTPException(error.status_code, str(error), headers=headers) from None
+
+    @app.post("/api/sample/investigate")
+    def sample_investigate(body: SampleInvestigationRequest, request: Request):
+        from scripts.check_agent import run_check
+
+        service = request.app.state.news
+        now = service.clock()
+        job = start_sample_agent(service.database, now)
+        if "error" in job:
+            headers = {"Retry-After": str(job["retry_after"])} if job.get("retry_after") else None
+            raise HTTPException(job["status_code"], job["error"], headers=headers)
+        provider = None
+        try:
+            limits = InvestigationSettings(max_stories=1, max_steps=8, max_steps_per_story=8,
+                max_seconds=20, max_llm_calls=5, max_articles_per_story=3,
+                max_input_characters=16000, max_output_tokens=500)
+            provider = ChatProvider(limits, service.env_file, sample_only=True)
+            report = run_check(live=True, env_file=service.env_file, sample_only=True, provider=provider)
+            record = report["investigation"]
+            result = dict(data_mode="sample", model=report.get("model"), passed=report["passed"],
+                          checks=report["checks"], optional_checks=report["optional_checks"],
+                          note=report["note"], target=report["target"])
+            requests_used = provider.calls_made
+            finish_sample_agent(service.database, job["id"], service.clock(), record.get("status", "incomplete"),
+                                requests_used, result)
+            return result
+        except ValueError:
+            finish_sample_agent(service.database, job["id"], service.clock(), "unavailable", provider.calls_made if provider else 0,
+                                error="Sample AI is unavailable or returned an unusable result")
+            raise HTTPException(503, "Sample AI is unavailable. Check the server-side opt-in and provider settings.") from None
+        except Exception:
+            finish_sample_agent(service.database, job["id"], service.clock(), "failed", provider.calls_made if provider else 0,
+                                error="Sample investigation could not finish")
+            raise HTTPException(502, "Sample investigation could not finish. Try again later.") from None
 
     return app
 

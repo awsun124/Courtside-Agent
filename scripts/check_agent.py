@@ -56,15 +56,17 @@ def assess(before, investigated):
         investigation=investigated['investigation'], target=target)
 
 
-def run_check(live=False, env_file=Path('.env')):
+def run_check(live=False, env_file=Path('.env'), sample_only=False, provider=None):
     result, briefing = scenario()
     before = deepcopy(briefing['candidates'][0])
     settings = InvestigationSettings(provider='openai-compatible' if live else 'rules',
         max_stories=1, max_steps=8, max_steps_per_story=8, max_seconds=20,
         max_llm_calls=5, max_articles_per_story=3, max_input_characters=16000, max_output_tokens=500)
-    provider = ChatProvider(settings, env_file) if live else None
+    provider = provider or (ChatProvider(settings, env_file, sample_only=sample_only) if live else None)
     investigated = investigate_briefing(result, briefing, settings=settings, provider=provider)
-    return assess(before, investigated)
+    report = assess(before, investigated)
+    report['model'] = provider.model if provider else None
+    return report
 
 
 def main():

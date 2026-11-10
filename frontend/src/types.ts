@@ -55,6 +55,16 @@ export interface Story {
   }
 }
 
+export interface SampleInvestigationResult {
+  data_mode: 'sample'
+  model: string
+  passed: boolean
+  checks: Record<string, boolean>
+  optional_checks: Record<string, boolean>
+  note: string
+  target: Story
+}
+
 export interface CollectionSource {
   id: string
   name: string
