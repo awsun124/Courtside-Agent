@@ -124,3 +124,18 @@ and [Chat Completions](https://developers.openai.com/api/reference/resources/cha
 ## Feed restrictions
 
 Feed-only material is excluded before investigation starts. A cluster containing restricted material keeps its deterministic score and source links but receives no generated summary or investigation. Restricted articles and previous candidate contexts are withheld from provider inputs. See [feed collection](feeds.md).
+
+## One small agent check
+
+Run `python -m scripts.check_agent` for an offline check using fictional injury
+reports and a separate trade rumor about the same fictional player. It checks
+related-story inspection, search, retrieval, in-story citations, and unchanged
+scores. Results go to ignored `artifacts/agent-check/report.json`.
+
+`python -m scripts.check_agent --live` runs the same case with the configured LLM.
+It requires the existing server-side key, model, and explicit opt-in. It permits
+at most five API attempts, eight steps, 20 seconds, 16,000 input characters per
+request, and 500 output tokens per request. It does not change the app's settings.
+A blocked or incomplete run fails visibly and does not fall back to rules.
+The offline baseline passes. The live LLM check has not been run or funded.
+This evaluates evidence boundaries, not independent reasoning or news accuracy.
