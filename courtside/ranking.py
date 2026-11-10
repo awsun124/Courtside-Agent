@@ -4,14 +4,13 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
-from difflib import SequenceMatcher
 import json
 import math
 from pathlib import Path
 import sqlite3
 from urllib.parse import urlsplit
 
-from .stories import clean_text, parse_date
+from .stories import clean_text, parse_date, likely_copy
 from scripts.validate_gdelt import canonical_url
 
 
@@ -51,12 +50,7 @@ class RankingSettings:
 
 
 def copies_match(first, second):
-    if clean_text(first["title"]) == clean_text(second["title"]):
-        return True
-    first_text = clean_text(first.get("content_excerpt") or first.get("description"))[:220]
-    second_text = clean_text(second.get("content_excerpt") or second.get("description"))[:220]
-    return min(len(first_text), len(second_text)) >= 100 and SequenceMatcher(
-        None, first_text, second_text, autojunk=False).ratio() >= 0.9
+    return likely_copy(first, second)
 
 
 def reporting_groups(articles):

@@ -275,8 +275,11 @@ def same_event(left, right):
 def likely_copy(left, right):
     if clean_text(left["title"]) == clean_text(right["title"]):
         return True
-    first, second = left["features"]["copy_excerpt"], right["features"]["copy_excerpt"]
-    return min(len(first), len(second)) >= 100 and SequenceMatcher(None, first, second, autojunk=False).ratio() >= 0.9
+    first_openings = {clean_text(left.get(field))[:220] for field in ("description", "content_excerpt")}
+    second_openings = {clean_text(right.get(field))[:220] for field in ("description", "content_excerpt")}
+    return any(min(len(first), len(second)) >= 100 and
+               SequenceMatcher(None, first, second, autojunk=False).ratio() >= 0.9
+               for first in first_openings for second in second_openings)
 
 
 def group_articles(articles):

@@ -82,6 +82,21 @@ class RankingTests(unittest.TestCase):
         ranked = score([first, second])
         self.assertEqual(ranked["breakdown"]["coverage"]["independent_publishers"], 1)
 
+    def test_matching_descriptions_count_once_despite_different_excerpt_lengths(self):
+        opening = "Marcus Reed scored 32 points and the Los Angeles Lakers extended their winning streak to six games with a 124-114 win over the Atlanta Hawks on Monday night."
+        first = {**article('first', title='Reed leads Lakers past Hawks'), 'description': opening,
+                 'content_excerpt': opening + ' More details followed in the full report.'}
+        second = {**article('second', title='Lakers win sixth straight behind Reed'),
+                  'description': opening, 'content_excerpt': None}
+        ranked = score([first, second])
+        self.assertEqual(ranked['breakdown']['coverage']['independent_publishers'], 1)
+        self.assertEqual(len(ranked['evidence_urls']), 2)
+
+    def test_short_shared_description_does_not_override_distinct_reporting(self):
+        first = {**article('first'), 'description': 'The Lakers won on Monday.'}
+        second = {**article('second'), 'description': first['description']}
+        self.assertEqual(score([first, second])['breakdown']['coverage']['independent_publishers'], 2)
+
     def test_known_publisher_aliases_collapse_affiliates(self):
         settings = RankingSettings(publisher_aliases={"first.example": "one newsroom", "second.example": "one newsroom"})
         ranked = score([article("first"), article("second")], settings)

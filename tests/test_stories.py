@@ -163,6 +163,17 @@ class StoryTests(unittest.TestCase):
         self.assertEqual(len(result["stories"]), 1)
         self.assertEqual(result["stories"][0]["reporting_groups"], 1)
 
+    def test_description_matches_are_not_hidden_by_a_longer_content_excerpt(self):
+        opening = "Marcus Reed scored 32 points and the Los Angeles Lakers extended their winning streak to six games with a 124-114 win over the Atlanta Hawks on Monday night."
+        first = article('Reed leads Lakers past Hawks', opening)
+        first['content_excerpt'] = opening + ' The full report contains additional game details.'
+        second = article('Lakers beat Hawks for sixth straight win', opening,
+                         url='https://other.com/game', publisher='Other Sports')
+        second['content_excerpt'] = None
+        result = process_report(report([first, second]))
+        self.assertEqual(len(result['stories']), 1)
+        self.assertEqual(result['stories'][0]['reporting_groups'], 1)
+
     def test_different_game_scores_do_not_merge(self):
         first = article("Knicks beat Cavaliers", "The New York Knicks beat the Cleveland Cavaliers 109-97.")
         second = article("Knicks beat Cavaliers", "The New York Knicks beat the Cleveland Cavaliers 120-110.", url="https://other.com/game")
