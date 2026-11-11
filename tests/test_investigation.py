@@ -77,6 +77,35 @@ class InvestigationTests(unittest.TestCase):
         self.assertEqual(saved["investigation"]["llm_calls"], 0)
         self.assertTrue(all(story["summary"] is None for story in saved["candidates"]))
 
+    def test_mixed_story_summarizes_only_permitted_evidence_without_changing_scores(self):
+        result, briefing = fixtures()
+        target = result["stories"][0]
+        blocked_url = target["article_urls"][0]
+        blocked = next(article for article in result["articles"] if article["canonical_url"] == blocked_url)
+        blocked.update(investigation_allowed=False, title="Restricted source headline", description="Restricted source text")
+        target["title"] = "Restricted source headline"
+        for candidate in briefing["candidates"] + briefing["stories"]:
+            if candidate["id"] == target["id"]:
+                candidate["title"] = "Restricted source headline"
+        before = deepcopy(briefing["candidates"])
+        with patch("courtside.investigate.investigate_briefing", wraps=investigate_briefing) as investigator:
+            saved = add_investigations(result, briefing, [])
+        permitted_result, permitted_briefing = investigator.call_args.args[:2]
+        self.assertNotIn("Restricted source", json.dumps([permitted_result, permitted_briefing]))
+        story = next(candidate for candidate in saved["candidates"] if candidate["id"] == target["id"])
+        self.assertIsNotNone(story["summary"])
+        self.assertTrue(all(citation["url"] != blocked_url for citation in story["summary"]["citations"]))
+        self.assertEqual(story["investigation"]["excluded_source_links"], 1)
+        self.assertEqual([(s["score"], s["rank"], s["breakdown"], s["evidence_urls"]) for s in before],
+                         [(s["score"], s["rank"], s["breakdown"], s["evidence_urls"]) for s in saved["candidates"]])
+
+    def test_restricted_article_cannot_be_retrieved_directly(self):
+        result, briefing = fixtures()
+        result["articles"][0]["investigation_allowed"] = False
+        tools = EvidenceTools(result, briefing, [])
+        with self.assertRaises(ValueError):
+            tools.retrieve_material(evidence_id(result["articles"][0]["url"]))
+
     def test_each_quote_must_match_retrieved_target_evidence(self):
         result, briefing = fixtures()
         tools = EvidenceTools(result, briefing, [])

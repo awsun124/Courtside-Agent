@@ -21,13 +21,14 @@ All article decisions and reasons are saved, including excluded articles.
 ## Story groups
 
 Articles must describe the same event type. Game reports need the same two
-teams, compatible scores when supplied, overlapping words, and publication
-times within 24 hours. Other supported events need a shared player name,
+teams and compatible scores when supplied, with publication times within
+24 hours. When either score is missing, direct game reports must be published
+within 18 hours of each other. Other supported events need a shared player name,
 overlapping words, and publication times within 72 hours. Injury reports with
 different body parts stay separate.
 
-The word overlap threshold is 45 percent for game reports and 55 percent for
-other events. Overlap is shared distinct words divided by the smaller word set.
+The word overlap threshold is 55 percent for other events.
+Overlap is shared distinct words divided by the smaller word set.
 These are initial rules, not measured probabilities. Every pair in a group must
 pass the check, so a weak match cannot bridge two otherwise separate groups.
 
@@ -37,6 +38,7 @@ The copy count is an estimate. Different wording can hide syndication, and
 similar wording does not prove it. The estimated reporting group count never
 exceeds the number of publisher labels. Ownership and source attribution still
 need a fuller review before numerical ranking.
+Explicit shared wire or reporter attribution also counts together during ranking.
 
 Rumor wording in headlines stays labeled. All groups require review. Grouping
 does not assign ranks. The separate [ranking step](ranking.md) scores the groups

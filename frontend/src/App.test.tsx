@@ -329,7 +329,7 @@ describe('Court Side dashboard', () => {
     serve(latest)
     render(<App />)
     await screen.findByRole('heading', { name: 'Saved NBA game report' })
-    expect(screen.getByText('Feed headline only. This story is excluded from generated summaries and investigation.')).toBeTruthy()
+    expect(screen.getByText('Headlines and source links only. A generated summary is unavailable for these sources.')).toBeTruthy()
     expect(screen.getAllByRole('link', { name: /Sample newsroom alpha/ }).length).toBeGreaterThan(0)
     expect(screen.queryByText('From the reporting')).toBeNull()
   })

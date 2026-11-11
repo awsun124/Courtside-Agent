@@ -7,6 +7,7 @@ from pathlib import Path
 from scripts.validate_gnews import load_api_key, SourceError
 from .sources import collect_sources, DEFAULT_SOURCES
 from .feeds import load_sources
+from .free_news import load_key as load_free_news_key, load_settings as load_free_news_settings
 from .ranking import RankingSettings, rank_stories
 from .sample_data import sample_report
 from .investigate import add_investigations
@@ -38,7 +39,7 @@ class NewsService:
 
     def collect(self, options, key, now):
         history = read_briefings(self.database, "live", limit=50)
-        return collect_sources(options, key, now, self.sources_file, previous_briefings=history)
+        return collect_sources(options, key, now, self.sources_file, previous_briefings=history, env_file=self.env_file)
 
     def latest(self, mode):
         saved = read_briefings(self.database, mode, limit=1)
@@ -78,6 +79,14 @@ class NewsService:
             if mode == "live":
                 feed_count = 0 if self.custom_collector else len(load_sources(self.sources_file))
                 reserved_requests = max_requests + feed_count
+                if not self.custom_collector:
+                    try:
+                        free_key = load_free_news_key(self.env_file)
+                    except SourceError:
+                        free_key = None
+                    if free_key:
+                        free_settings = load_free_news_settings()
+                        reserved_requests += free_settings["max_requests"] + free_settings["corroboration_requests"]
         except (ValueError, OSError):
             raise RefreshError(503, "Source configuration is invalid. The previous briefing is unchanged.") from None
         job = start_refresh(self.database, mode, now, reserved_requests, max_seconds=120)

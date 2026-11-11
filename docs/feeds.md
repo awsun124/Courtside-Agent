@@ -27,11 +27,12 @@ pipeline uses Yahoo headline metadata for those calculations, even though it
 withholds feed excerpts from AI investigation. Confirm that use with Yahoo
 before public deployment.
 
-Feed material has `investigation_allowed: false`. Any cluster containing it is
-excluded from investigation, generated summaries, and previous-briefing context
-sent to a provider. Scores still run in deterministic code. Duplicate articles
+Feed material has `investigation_allowed: false`. It is excluded from investigation
+and generated summaries. Mixed-source stories use only their permitted evidence
+for summaries, while stories without permitted evidence show headlines and links.
+Scores still run in deterministic code. Duplicate articles
 found through both RSS and GNews inherit the restrictive policy. Headlines and
-source links remain visible, with an explicit feed-only note. Other eligible
+source links remain visible, with an explicit note when no summary is available. Other eligible
 stories can still use the rules investigator. No source permissions are inferred
 from a successful HTTP response.
 

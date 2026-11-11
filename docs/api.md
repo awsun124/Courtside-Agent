@@ -32,6 +32,8 @@ are different states.
 
 Days can be 1 through 7. The request limit can be 1 through 5, with a default of
 3. This is the GNews budget. Each enabled RSS feed adds one bounded request.
+When `FREE_NEWS_API_KEY` is configured, FreeNewsApi.ai adds at most two discovery
+requests and one targeted search, as set in `config/free-news.json`.
 Collection has a 90-second overall limit, with at most 30 seconds per GNews
 request and 12 seconds per feed request.
 Requests are synchronous, so clients should keep their loading state until the
@@ -45,7 +47,7 @@ unexpected exceptions are returned without private key values or tracebacks.
 Successful partial collection returns HTTP 200 with a `partial` refresh status,
 the actual number of requests, and experimental score warnings. A source failure
 without article data returns HTTP 502 and preserves the previous briefing. A
-missing GNews key leaves the enabled RSS feeds available. Invalid source
+missing GNews key leaves the enabled RSS feeds and configured FreeNewsApi.ai collector available. Invalid source
 configuration returns HTTP 503. Database errors also return a safe HTTP 503 response.
 Invalid request parameters return HTTP 422.
 
@@ -74,7 +76,9 @@ between starts and an app-specific allowance of 30 source requests per UTC day.
 Limit responses use HTTP 429 with `Retry-After`.
 
 The requested allowance is reserved before collection and replaced by the
-actual attempt count when collection finishes. Enabled RSS feeds reserve one extra request each, in addition to the GNews request budget. An interrupted process keeps its
+actual attempt count when collection finishes. Enabled RSS feeds reserve one extra
+request each, in addition to the GNews request budget. Configured FreeNewsApi.ai
+collection also reserves its discovery and targeted request limits. An interrupted process keeps its
 reservation, which avoids silently losing request counts. Expired refresh leases
 are marked failed when another refresh starts. This is a small local refresh
 guard, not a distributed job system.

@@ -10,6 +10,7 @@ from scripts.validate_gdelt import canonical_url, format_time
 from .feeds import collect_feeds, load_sources
 from .stories import inspect_article, group_articles, parse_date, clean_text
 from .ranking import reporting_groups
+from .free_news import collect_headlines, load_key as load_free_news_key, load_settings as load_free_news_settings
 
 DEFAULT_SOURCES = Path(__file__).resolve().parents[1] / "config/sources.json"
 
@@ -42,7 +43,7 @@ def story_candidates(articles, available_end, publisher_aliases=None):
     return groups
 
 
-def plan_searches(articles, available_end, now, previous_briefings=(), minimum_publishers=2, publisher_aliases=None):
+def plan_searches(articles, available_end, now, previous_briefings=(), minimum_publishers=2, publisher_aliases=None, source_id="gnews"):
     recent, seen_queries = {}, set()
     for briefing in sorted(previous_briefings, key=lambda item: parse_date(item["as_of"]), reverse=True):
         if briefing.get("data_mode", "live") != "live":
@@ -51,6 +52,8 @@ def plan_searches(articles, available_end, now, previous_briefings=(), minimum_p
         if not 0 <= age < 6:
             continue
         for entry in briefing.get("collection_activity", []):
+            if entry.get("source_id", "gnews") != source_id:
+                continue
             if entry.get("purpose") != "corroboration" or not entry.get("requests") or not entry.get("query"):
                 continue
             query_key = clean_text(entry["query"])
@@ -88,7 +91,11 @@ def merge_articles(articles):
             continue
         previous = merged[url]
         combined_sources = sorted(set(previous["collection_sources"]) | set(sources))
-        if article.get("investigation_allowed") is False:
+        if article.get("metadata_only") and not previous.get("metadata_only"):
+            previous["collection_sources"] = combined_sources
+        elif previous.get("metadata_only") and not article.get("metadata_only"):
+            merged[url] = {**article, "collection_sources": combined_sources}
+        elif article.get("investigation_allowed") is False:
             merged[url] = {**article, "collection_sources": combined_sources}
         else:
             previous["collection_sources"] = combined_sources
@@ -123,7 +130,8 @@ def search_activity(report, previous, purpose, query):
 
 
 def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_transport=None,
-                    news_transport=None, clock=time.monotonic, sleep=time.sleep, previous_briefings=()):
+                    news_transport=None, clock=time.monotonic, sleep=time.sleep, previous_briefings=(),
+                    env_file=None, free_news_transport=None):
     feed_ids = load_sources(sources_file)
     deadline = clock() + args.max_seconds
     start = now - timedelta(days=args.days)
@@ -144,6 +152,27 @@ def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_trans
         activity.append(collection_activity(source["id"], source["name"], "feed", records, previous_feed_articles,
                                             source_attempts, source["status"], note=note))
         previous_feed_articles.extend(records)
+    free_key = None
+    if env_file is not None:
+        free_status = dict(id="free-news-api", name="FreeNewsApi.ai", kind="api", status="unconfigured",
+                           article_count=0, collected_at=None, complete_window=False, note="No FREE_NEWS_API_KEY configured.")
+        free_attempts, free_articles = [], []
+        try:
+            free_key = load_free_news_key(env_file)
+            if free_key:
+                free_options = dict(max_seconds=max(0, min(30, deadline - clock())), clock=clock, sleep=sleep)
+                if free_news_transport is not None:
+                    free_options["transport"] = free_news_transport
+                free_articles, free_status, free_attempts = collect_headlines(free_key, start, now, **free_options)
+                for attempt in free_attempts:
+                    attempt.update(purpose="discovery", query="NBA")
+        except SourceError:
+            free_status.update(status="failed", error="FreeNewsApi.ai key configuration is invalid.")
+        statuses.append(free_status)
+        activity.append(collection_activity("free-news-api", "FreeNewsApi.ai", "discovery", free_articles,
+            articles, free_attempts, free_status["status"], "NBA", free_status.get("error") or free_status.get("note")))
+        articles.extend(free_articles)
+        attempts.extend(free_attempts)
     news_status = dict(id="gnews", name="GNews", kind="api", status="unconfigured", article_count=0,
                        collected_at=None, delay_hours=12, complete_window=False,
                        note="The free plan excludes the latest 12 hours.")
@@ -217,12 +246,47 @@ def collect_sources(args, api_key, now, sources_file=DEFAULT_SOURCES, feed_trans
     elif api_key:
         news_status.update(status="skipped", note="Collection time budget exhausted")
     else:
-        news_status["note"] = "No GNews key configured. Only enabled feeds were requested."
-    if not any(entry["purpose"] == "discovery" for entry in activity):
+        news_status["note"] = "No GNews key configured. Other configured sources were requested."
+    if not any(entry["purpose"] == "discovery" and entry["source_id"] == "gnews" for entry in activity):
         activity.append(collection_activity("gnews", "GNews", "discovery", [], [],
             [attempt for attempt in attempts if attempt.get("source") == "gnews"], news_status["status"], note=news_status.get("note") or "GNews unavailable."))
     if not any(entry["purpose"] == "corroboration" for entry in activity):
         activity.append(collection_activity("gnews", "GNews", "corroboration", [], [], [], "skipped", note=target_note))
+    if free_key and free_status["status"] == "partial" and not any(a["status"] == "failed" for a in free_attempts):
+        free_settings = load_free_news_settings()
+        planned = plan_searches(articles, now, now, previous_briefings,
+            max(3, getattr(args, "minimum_publishers", 2)), getattr(args, "publisher_aliases", None), "free-news-api")
+        candidate = next((item for item in planned if not item["skip_reason"]), None)
+        if free_settings["corroboration_requests"] and candidate and deadline - clock() > 1:
+            query = candidate["query"]
+            sleep(0.6)
+            options = dict(max_seconds=min(15, deadline - clock()), clock=clock, sleep=sleep,
+                           settings={**free_settings, "max_requests": 1}, query=query, sort="relevance")
+            if free_news_transport is not None:
+                options["transport"] = free_news_transport
+            focused, status, focused_attempts = collect_headlines(free_key, start, now, **options)
+            for attempt in focused_attempts:
+                attempt.update(purpose="corroboration", query=query)
+            entry = collection_activity("free-news-api", "FreeNewsApi.ai", "corroboration", focused, articles,
+                focused_attempts, status["status"], query, status.get("error") or status.get("note"))
+            updated = story_candidates(articles + focused, now, getattr(args, "publisher_aliases", None))
+            matches = [group for group in updated if set(group["article_urls"]) & set(candidate["article_urls"])]
+            entry["reporting_groups_added"] = max(0, max((group["reporting_groups"] for group in matches), default=0) - candidate["reporting_groups"])
+            entry["selection_reason"] = f"Seeking more coverage for a story with {candidate['reporting_groups']} reporting groups."
+            entry["topic"] = candidate["event"]
+            activity.append(entry)
+            articles.extend(focused)
+            free_articles = merge_articles(free_articles + focused)
+            free_status["article_count"] = len(free_articles)
+            for field in ("rejected_records", "filtered_records", "capped_records"):
+                free_status[field] += status.get(field, 0)
+            free_status["missing_date_provenance"] = sum("not supplied" in a["publication_date_basis"] for a in free_articles)
+            if status.get("error"):
+                free_status["error"] = status["error"]
+            attempts.extend(focused_attempts)
+        elif free_settings["corroboration_requests"]:
+            note = "Collection time budget exhausted." if deadline - clock() <= 1 else "No candidate available outside recent-search cooldowns."
+            activity.append(collection_activity("free-news-api", "FreeNewsApi.ai", "corroboration", [], [], [], "skipped", note=note))
     usable = any(status["status"] in {"ok", "partial"} for status in statuses)
     if not usable:
         raise SourceError("No configured source completed a request. The previous briefing is unchanged.")

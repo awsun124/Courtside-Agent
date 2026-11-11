@@ -60,6 +60,7 @@ def reporting_groups(articles):
         for group in groups:
             if any(article["publisher_id"] == other["publisher_id"] or
                    article["publisher_host"] == other["publisher_host"] or
+                   (article.get("reporting_origin") and article["reporting_origin"] == other.get("reporting_origin")) or
                    copies_match(article, other) for other in group):
                 matching.append(group)
         combined = [article]

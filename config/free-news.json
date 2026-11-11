@@ -1,0 +1,29 @@
+{
+  "max_requests": 2,
+  "corroboration_requests": 1,
+  "max_articles_per_publisher": 20,
+  "publishers": {
+    "www.cbssports.com": "CBS Sports",
+    "clutchpoints.com": "ClutchPoints",
+    "heavy.com": "Heavy",
+    "www.essentiallysports.com": "EssentiallySports",
+    "fadeawayworld.net": "Fadeaway World",
+    "www.sbnation.com": "SB Nation",
+    "www.si.com": "Sports Illustrated",
+    "www.latimes.com": "Los Angeles Times",
+    "www.foxsports.com": "FOX Sports",
+    "bleacherreport.com": "Bleacher Report",
+    "www.espn.com": "ESPN",
+    "nypost.com": "New York Post",
+    "basketnews.com": "BasketNews",
+    "mymotherlode.com": "MyMotherLode",
+    "sentinelcolorado.com": "Sentinel Colorado",
+    "apnews.com": "Associated Press",
+    "www.reuters.com": "Reuters",
+    "www.nba.com": "NBA",
+    "sports.yahoo.com": "Yahoo Sports",
+    "www.usatoday.com": "USA Today",
+    "www.sportingnews.com": "The Sporting News",
+    "www.denverpost.com": "The Denver Post"
+  }
+}

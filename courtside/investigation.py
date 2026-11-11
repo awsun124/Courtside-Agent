@@ -74,7 +74,7 @@ class EvidenceTools:
         words = set(clean_text(query).split())
         matches = []
         for article_id, article in self.articles.items():
-            if article.get("decision") == "excluded":
+            if article.get("decision") == "excluded" or article.get("investigation_allowed") is False:
                 continue
             text = clean_text(article["title"] + " " + (article.get("description") or ""))
             overlap = len(words & set(text.split()))
@@ -90,6 +90,8 @@ class EvidenceTools:
         article = self.articles[article_id]
         if article.get("decision") == "excluded":
             raise ValueError("Excluded articles are not available as reporting evidence")
+        if article.get("investigation_allowed") is False:
+            raise ValueError("This source is available as a headline and link only")
         texts = {name: short_text(article.get(field)) for name, field in
                  [("title", "title"), ("description", "description"), ("excerpt", "content_excerpt")]}
         quarantined = suspicious_text(" ".join(texts.values()))

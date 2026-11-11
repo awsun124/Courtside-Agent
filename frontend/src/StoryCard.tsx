@@ -76,7 +76,7 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
         <p className="story-summary">{summary.text}</p>
         <div className="citation-links">{summary.citations.map(citation => <SourceLink key={citation.evidence_id} url={citation.url}>{citation.publisher}</SourceLink>)}</div>
       </> : <>
-        <p className="missing-summary">{story.investigation?.status === 'source_restricted' ? 'Feed headline only. This story is excluded from generated summaries and investigation.' : 'No evidence check has been saved for this briefing yet. Original reporting is linked below.'}</p>
+        <p className="missing-summary">{story.investigation?.status === 'source_restricted' ? 'Headlines and source links only. A generated summary is unavailable for these sources.' : 'No evidence check has been saved for this briefing yet. Original reporting is linked below.'}</p>
         <div className="citation-links">{story.evidence_urls.map(url => <SourceLink key={url} url={url}>{sourceLabel(url)}</SourceLink>)}</div>
       </>}
       <div className="story-meta">

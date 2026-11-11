@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import sqlite3
 import unicodedata
+from urllib.parse import urlsplit
 
 from scripts.validate_gdelt import canonical_url
 from .feeds import CATALOG
@@ -34,12 +35,13 @@ NAME_STOP_WORDS.update(" ".join(TEAM_NAMES.values()).split())
 NAME_STOP_WORDS.update("rare feat historic milestone all star game first time man claiming security home says claims son matches record records".split())
 NAME_STOP_WORDS.update("get major boost ahead announce named receive unwelcome unsettling scoring streak personal tribute biggest losers after before following amid marquee matchup against latest clash scare trade signing waiver".split())
 NAME_STOP_WORDS.update("sign signs signed waive waives waived acquire acquires acquired give gives out questionable doubtful return returns ruled sidelined cleared".split())
+NAME_STOP_WORDS.update("ii iii iv could may might miss extended time suffer suffers suffered setback another role unfortunate key decision targets deadline opportunity".split())
 STOP_WORDS = set("the a an to for and of in on at as by from with is are was were be has have his her their its this that after before more over past out will nba says said latest news update report reports".split())
 EVENT_WORDS = {
     "injury": r"\b(injury|injured|surgery|strain|sprain|tightness|tear|torn|re evaluated|out indefinitely|remains out|ruled out|sidelined)\b",
     "trade": r"\b(trade|traded|trades|acquire|acquired|deal)\b",
     "contract": r"\b(sign|signs|signed|signing|extension|waive|waives|waived|contract)\b",
-    "game": r"\b(win|wins|won|victory|defeat|defeats|beat|beats|scored|scores|hold off|holds off|past cavs|over cavs)\b|\b(leads?|lifts?)\b.{0,70}\bpast\b",
+    "game": r"\b(win|wins|won|victory|defeat|defeats|beat|beats|scored|scores|hold off|holds off|past cavs|over cavs)\b|\b(leads?|lifts?|powers?)\b.{0,70}\bpast\b",
 }
 BODY_PARTS = {"knee", "ankle", "hamstring", "thumb", "wrist", "shoulder", "foot", "hand", "back", "elbow", "calf", "hip", "finger"}
 
@@ -87,7 +89,7 @@ def find_event(text):
 def reported_availability(text):
     if re.search(r"\b(not (?:yet )?available|not (?:yet )?cleared to play|not expected to play)\b", text):
         return "unavailable"
-    if re.search(r"\b(questionable|doubtful|game time decision|not (?:yet )?ruled out|not (?:yet )?off the injury report|expected to (?:return|play)|could return|may return|might return|hopes to return)\b", text):
+    if re.search(r"\b(questionable|doubtful|game time decision|not (?:yet )?ruled out|not (?:yet )?off the injury report|expected to (?:return|play|miss)|could (?:return|miss)|may (?:return|miss)|might (?:return|miss)|hopes to return)\b", text):
         return "uncertain"
     if re.search(r"\b(unavailable|out|sidelined|will miss|will be without)\b", text):
         return "unavailable"
@@ -101,6 +103,8 @@ def has_nba_context(article):
     for feed_id in article.get("collection_sources", []):
         if feed_id in nba_feeds and article.get("source_url") == CATALOG[feed_id][1]:
             return True, "NBA-specific feed"
+    if article.get("metadata_only") and re.search(r"/nba(?:/|$)", urlsplit(article.get("url", "")).path):
+        return True, "NBA section URL"
     text = " ".join(article.get(field) or "" for field in ("title", "description", "content_excerpt"))
     return bool(re.search(r"\b(nba|basketball)\b", clean_text(text))), "Article text"
 
@@ -130,6 +134,12 @@ def inspect_article(article):
         return "review", "Player or team evaluation, not a reported transaction", {}
     if re.search(r"\b(impressed|applaud|praise)\b", title_text):
         return "review", "Reaction or commentary rather than direct event reporting", {}
+    if re.search(r"\b(jersey swap|exchange jerseys|trade proposal|mock trade|trade idea|urged to trade|trade deadline plans|trade deadline opportunity)\b", title_text):
+        return "review", "Side event or proposed move rather than a new reported game or transaction", {}
+    if article.get("metadata_only") and re.search(r"\b(trade targets?|trade candidate|trade path|trade suitor|trade exception)\b|\b(could|would|should)\b.*\b(trade|target|suitor|contract)\b", title_text):
+        return "review", "Proposed transaction without a clear reported action", {}
+    if article.get("metadata_only") and re.search(r"\b(message|mocks?|reminder|sums up|gets? into it|things the box score|breaks down|makes nba history|historic streak)\b", title_text):
+        return "review", "Reaction or analysis that mentions an event rather than reporting its result", {}
     if re.search(r"\bexplains\b.*\bquote\b", title_text):
         return "review", "Reaction or commentary rather than direct event reporting", {}
     if re.search(r"\b(biggest (winners|losers)|salary cap repercussions|silver lining|had interest|previously interested|no urgency to trade)\b", title_text):
@@ -167,8 +177,12 @@ def inspect_article(article):
         injury_is_description = bool(injured and (
             title_text.startswith("injured ") or any(
                 person in title_text and injured.start() < title_text.index(person) for person in subjects)))
-        event_title = re.sub(r"\binjured\b", "", title_text) if injury_is_description else title_text
+        event_title = clean_text(primary_title) if article.get("metadata_only") else title_text
+        if injury_is_description:
+            event_title = re.sub(r"\binjured\b", "", event_title)
         event = find_event(event_title)
+        if event is None and article.get("metadata_only") and find_event(title_text) == "injury" and reported_availability(event_title):
+            event = "injury"
         if event is None and injury_is_description:
             if reported_availability(clean_text(primary_title)):
                 event = "injury"
@@ -253,7 +267,7 @@ def same_event(left, right):
             first_scores = {tuple(sorted(map(int, score.split("-")))) for score in first["game_scores"]}
             second_scores = {tuple(sorted(map(int, score.split("-")))) for score in second["game_scores"]}
             return bool(first_scores & second_scores)
-        return bool(set(first["people"]) & set(second["people"])) or similarity(first["terms"], second["terms"]) >= 0.45
+        return hours <= 18
     if not set(first.get("subjects", first["people"])) & set(second.get("subjects", second["people"])):
         return False
     if first["event"] == "injury":

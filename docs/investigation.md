@@ -134,7 +134,7 @@ and [Chat Completions](https://developers.openai.com/api/reference/resources/cha
 
 ## Feed restrictions
 
-Feed-only material is excluded before investigation starts. A cluster containing restricted material keeps its deterministic score and source links but receives no generated summary or investigation. Restricted articles and previous candidate contexts are withheld from provider inputs. See [feed collection](feeds.md).
+Restricted articles are removed before investigation starts. A mixed-source story can still receive a summary from its permitted evidence. Its numerical ranking continues to use the full collected coverage. A story with no permitted material shows attributed headlines and links without a generated summary. Restricted text and titles are withheld from provider inputs. See [feed collection](feeds.md) and [FreeNewsApi.ai](free-news-api-check.md).
 
 ## One small agent check
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .investigation import InvestigationSettings, investigate_briefing
 from .llm import ChatProvider
+from .stories import parse_date
 from scripts.validate_gdelt import canonical_url
 from .storage import initialize_database, read_briefings, read_run
 
@@ -15,20 +16,44 @@ def add_investigations(result, briefing, previous, settings_file=None, env_file=
     blocked_urls = {canonical_url(article["url"]) for article in result["articles"]
                     if article.get("investigation_allowed") is False}
     if blocked_urls:
-        blocked_ids = {story["id"] for story in result["stories"]
-                       if any(canonical_url(url) in blocked_urls for url in story["article_urls"])}
-        permitted_result = {**result, "articles": [article for article in result["articles"]
-                            if canonical_url(article["url"]) not in blocked_urls],
-                            "stories": [story for story in result["stories"] if story["id"] not in blocked_ids]}
-        permitted_briefing = {**briefing, "candidates": [story for story in briefing["candidates"] if story["id"] not in blocked_ids],
-                             "stories": [story for story in briefing["stories"] if story["id"] not in blocked_ids]}
+        allowed_articles = {canonical_url(article["url"]): article for article in result["articles"]
+                            if canonical_url(article["url"]) not in blocked_urls}
+
+        def permitted_view(story):
+            saved = dict(story)
+            for field in ("article_urls", "evidence_urls"):
+                if field in saved:
+                    saved[field] = [url for url in saved[field] if canonical_url(url) in allowed_articles]
+            urls = saved.get("article_urls", saved.get("evidence_urls", []))
+            if urls:
+                saved["title"] = allowed_articles[canonical_url(urls[0])]["title"]
+            if "reporting_groups" in saved and isinstance(saved["reporting_groups"], list):
+                groups = []
+                for group in saved["reporting_groups"]:
+                    urls = [url for url in group["evidence_urls"] if canonical_url(url) in allowed_articles]
+                    if urls:
+                        members = [allowed_articles[canonical_url(url)] for url in urls]
+                        groups.append(dict(evidence_urls=urls, publishers=sorted({a["publisher_name"] for a in members}),
+                                           first_published_at=min((a["published_at"] for a in members), key=parse_date)))
+                saved["reporting_groups"] = groups
+            return saved
+
+        permitted_stories = [permitted_view(story) for story in result["stories"]]
+        permitted_stories = [story for story in permitted_stories if story["article_urls"]]
+        allowed_ids = {story["id"] for story in permitted_stories}
+        blocked_ids = {story["id"] for story in result["stories"]} - allowed_ids
+        permitted_result = {**result, "articles": list(allowed_articles.values()), "stories": permitted_stories}
+        permitted_briefing = {**briefing, "candidates": [permitted_view(story) for story in briefing["candidates"] if story["id"] in allowed_ids],
+                             "stories": [permitted_view(story) for story in briefing["stories"] if story["id"] in allowed_ids]}
         permitted_previous = [{**old, "candidates": [story for story in old["candidates"]
                               if story.get("investigation", {}).get("status") != "source_restricted"
                               and not any(canonical_url(url) in blocked_urls for url in story["evidence_urls"])]}
                               for old in previous]
+        reviewed_by_id = {}
         if permitted_briefing["candidates"]:
             reviewed = add_investigations(permitted_result, permitted_briefing, permitted_previous, settings_file, env_file)
             status = reviewed["investigation"]
+            reviewed_by_id = {story["id"]: story for story in reviewed["candidates"]}
         else:
             status = dict(status="source_restricted", llm_calls=0, steps_used=0)
         briefing["investigation"] = {**status, "restricted_stories": len(blocked_ids)}
@@ -37,7 +62,19 @@ def add_investigations(result, briefing, previous, settings_file=None, env_file=
                 story["summary"] = None
                 story["what_changed"] = None
                 story["investigation"] = dict(status="source_restricted", activity=[],
-                    decision_summary="Feed headlines are shown with attribution. This story was excluded from investigation because source processing permission has not been established.")
+                    decision_summary="Only attributed headlines and source links are available for this story. No source material was sent to the investigator.")
+            elif story["id"] in reviewed_by_id:
+                reviewed_story = reviewed_by_id[story["id"]]
+                for field in ("summary", "what_changed", "investigation"):
+                    if field in reviewed_story:
+                        story[field] = reviewed_story[field]
+                excluded = sum(canonical_url(url) in blocked_urls for url in story["evidence_urls"])
+                if excluded and "investigation" in story:
+                    story["investigation"]["excluded_source_links"] = excluded
+                    note = f"{excluded} source links contributed coverage metadata only and were excluded from this evidence check."
+                    uncertainty = story["investigation"].setdefault("uncertainty", [])
+                    if note not in uncertainty:
+                        uncertainty.append(note)
         return briefing
     provider = None
     try:

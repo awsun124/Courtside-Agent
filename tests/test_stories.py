@@ -219,6 +219,15 @@ class StoryTests(unittest.TestCase):
                 saved = article(title, "Jalen Brunson scored 31 as New York Knicks beat Cleveland Cavaliers 109-97.")
                 self.assertEqual(process_report(report([saved]))['articles'][0]['decision'], 'review')
 
+    def test_direct_game_reports_group_when_headlines_focus_on_different_players(self):
+        articles = [article('Luka Doncic powers NBA Lakers past Hawks', '', date='2026-11-08T06:00:00Z'),
+                    article('Austin Reaves helps Lakers beat Hawks in NBA game', '', url='https://second.com/game', date='2026-11-08T12:00:00Z')]
+        self.assertEqual(process_report(report(articles))['decisions'], {'included': 2})
+        self.assertEqual(len(process_report(report(articles))['stories']), 1)
+        articles[1]['published_at'] = '2026-11-08T17:00:00Z'
+        articles[0]['published_at'] = '2026-11-07T21:00:00Z'
+        self.assertEqual(len(process_report(report(articles))['stories']), 2)
+
     def test_award_and_weekly_preview_are_not_injury_corroboration(self):
         articles = [article("Lakers Star Luka Doncic Named NBA Player of the Week Amid Historic Start",
                             "The Lakers announced major NBA news for Luka Doncic following his brief injury absence."),
