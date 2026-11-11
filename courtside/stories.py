@@ -138,7 +138,7 @@ def inspect_article(article):
         return "review", "Side event or proposed move rather than a new reported game or transaction", {}
     if article.get("metadata_only") and re.search(r"\b(trade targets?|trade candidate|trade path|trade suitor|trade exception)\b|\b(could|would|should)\b.*\b(trade|target|suitor|contract)\b", title_text):
         return "review", "Proposed transaction without a clear reported action", {}
-    if article.get("metadata_only") and re.search(r"\b(message|mocks?|reminder|sums up|gets? into it|things the box score|breaks down|makes nba history|historic streak)\b", title_text):
+    if re.search(r"\b(message|mocks?|reminder|sums up|gets? into it|things the box score|breaks down|makes nba history|historic streak|not hiding feelings)\b|\bsends\b.*\bstatement\b", title_text):
         return "review", "Reaction or analysis that mentions an event rather than reporting its result", {}
     if re.search(r"\bexplains\b.*\bquote\b", title_text):
         return "review", "Reaction or commentary rather than direct event reporting", {}

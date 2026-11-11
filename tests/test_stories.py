@@ -219,6 +219,25 @@ class StoryTests(unittest.TestCase):
                 saved = article(title, "Jalen Brunson scored 31 as New York Knicks beat Cleveland Cavaliers 109-97.")
                 self.assertEqual(process_report(report([saved]))['articles'][0]['decision'], 'review')
 
+    def test_game_mentions_in_reactions_do_not_inflate_coverage_from_any_collector(self):
+        titles = ["Jimmy Butler's Clipboard Message to Warriors Revealed by Steve Kerr After Blowout Win vs. Pelicans",
+                  'Warriors Jimmy Butler Sends Blunt 3-Word Stephen Curry Statement',
+                  'Jordan Poole not hiding feelings about Warriors, possible return']
+        for source in ('gnews', 'yahoo-nba', 'free-news-api'):
+            articles = [article('Warriors beat Pelicans 138-87 in NBA game', '', publisher='First Sports'),
+                        article('Golden State Warriors defeat New Orleans Pelicans 138-87', '',
+                                url='https://second.com/game', publisher='Second Sports')]
+            for index, title in enumerate(titles):
+                saved = article(title, 'The Golden State Warriors beat the New Orleans Pelicans 138-87 in an NBA game.',
+                                url=f'https://reaction{index}.com/story', publisher=f'Reaction {index}')
+                saved.update(collection_sources=[source], metadata_only=source == 'free-news-api')
+                articles.append(saved)
+            processed = process_report(report(articles))
+            self.assertEqual(processed['decisions'], {'included': 2, 'review': 3}, source)
+            ranked = rank_stories(processed)
+            self.assertEqual(len(ranked['stories']), 1)
+            self.assertEqual(ranked['stories'][0]['breakdown']['coverage']['independent_publishers'], 2)
+
     def test_direct_game_reports_group_when_headlines_focus_on_different_players(self):
         articles = [article('Luka Doncic powers NBA Lakers past Hawks', '', date='2026-11-08T06:00:00Z'),
                     article('Austin Reaves helps Lakers beat Hawks in NBA game', '', url='https://second.com/game', date='2026-11-08T12:00:00Z')]
