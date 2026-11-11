@@ -35,6 +35,7 @@ export interface Story {
   publishers: string[]
   evidence_urls: string[]
   reporting_groups: { first_published_at: string; publishers: string[]; evidence_urls: string[] }[]
+  related_reading?: { title: string; url: string; publisher: string; published_at: string; reason: string }[]
   injury_updates?: { title: string; availability: string; published_at: string; publisher: string; url: string }[]
   has_rumor: boolean
   needs_review: boolean

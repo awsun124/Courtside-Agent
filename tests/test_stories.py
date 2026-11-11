@@ -30,6 +30,36 @@ def injury(**changes):
     return {**saved, **changes}
 
 
+class RelatedReadingTests(unittest.TestCase):
+    def test_context_is_separate_from_evidence_and_scores(self):
+        direct = article("Warriors beat Pelicans 138-87 in NBA game", "Golden State Warriors beat New Orleans Pelicans.")
+        reaction = article("Butler sends message after Warriors beat Pelicans", "NBA reaction to Golden State Warriors against New Orleans Pelicans.", url="https://other.com/reaction", publisher="Other Sports")
+        baseline = rank_stories(process_report(report([direct])))
+        result = process_report(report([direct, reaction]))
+        ranked = rank_stories(result)
+        story = ranked["candidates"][0]
+        self.assertEqual(story["related_reading"][0]["url"], reaction["url"])
+        self.assertEqual(story["related_reading"][0]["publisher"], "Other Sports")
+        self.assertEqual(story["score"], baseline["candidates"][0]["score"])
+        self.assertEqual(story["evidence_urls"], [direct["url"]])
+        self.assertEqual(story["publishers"], [direct["publisher_name"]])
+
+    def test_injury_context_requires_the_same_player_and_body_part(self):
+        direct = injury()
+        context = article("Jalen Duren ankle injury analysis", "NBA Pistons analysis", url="https://other.com/ankle")
+        matching = article("Jalen Duren hamstring injury takeaways", "NBA Pistons analysis", url="https://other.com/hamstring")
+        result = process_report(report([direct, context, matching]))
+        self.assertEqual([item["url"] for item in result["stories"][0]["related_reading"]], [matching["url"]])
+
+    def test_shared_team_trade_old_and_duplicate_links_are_not_related(self):
+        direct = article("Warriors beat Pelicans 138-87 in NBA game", "Golden State Warriors beat New Orleans Pelicans.")
+        titles = ["Warriors trade proposals after Pelicans win", "Warriors analysis and reactions", "Warriors react after beating Lakers"]
+        extras = [article(title, "NBA analysis", url=f"https://other.com/{index}") for index, title in enumerate(titles)]
+        extras.append(article("Warriors react after Pelicans game", "NBA analysis", url="https://other.com/old", date="2026-11-06T12:00:00Z"))
+        result = process_report(report([direct, *extras]))
+        self.assertEqual(result["stories"][0]["related_reading"], [])
+
+
 class StoryTests(unittest.TestCase):
     def test_reviewed_news_examples(self):
         cases = json.loads((Path(__file__).parent / "fixtures/news_review.json").read_text())

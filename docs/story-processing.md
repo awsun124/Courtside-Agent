@@ -75,3 +75,9 @@ the groups as input to a most-covered ranking.
 
 
 The processor now uses verified feed categories as NBA context and recognizes additional event types. See [the saved article review](filter-review.md) for the changes, same-input results, and remaining limitations.
+
+## Related reading
+
+Each story can include up to five related links from collected articles held for review. These are separate from direct evidence, publisher counts, ranking components, and investigator input. Only headlines, publisher names, dates, and original links are shown. Source text restrictions still apply.
+
+Matching currently supports game context mentioning both opponents, or injury context naming the same player and body part, within 36 hours of a direct report. Sharing only a team or player does not qualify. Betting, trade speculation, previews, and likely copies are omitted. Matching is an estimate and can miss useful context. Existing saved briefings need a manual refresh to include this section.

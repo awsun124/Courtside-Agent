@@ -147,6 +147,18 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
           </div>
         </details>
 
+        {story.related_reading && story.related_reading.length > 0 && <details>
+          <summary>Related reading <span className="detail-count">{story.related_reading.length}</span><Icon name="chevron" /></summary>
+          <div className="details-body sources-list">
+            <p className="detail-note">Background, analysis, and reactions. These links do not count toward the score or independent confirmation of this story.</p>
+            {story.related_reading.map(article => <div className="source-entry" key={article.url}>
+              <SourceLink url={article.url}>{article.title}</SourceLink>
+              <p>{article.publisher} · Published {formatDate(article.published_at, true)}</p>
+              <p className="detail-note">{article.reason}</p>
+            </div>)}
+          </div>
+        </details>}
+
         <details>
           <summary>Evidence check<Icon name="chevron" /></summary>
           <div className="details-body">

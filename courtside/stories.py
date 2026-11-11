@@ -342,6 +342,41 @@ def group_articles(articles):
     return stories
 
 
+
+def related_reading(story, articles):
+    direct = [article for article in articles if article["canonical_url"] in story["article_urls"]]
+    matches = []
+    for article in articles:
+        if article["decision"] != "review" or not article["nba_context"]:
+            continue
+        text = clean_text(article["title"] + " " + (article.get("description") or "")[:300])
+        if re.search(r"\b(trade|traded|betting|bets|odds|preview|prediction|fantasy|throwback|flashback)\b", text):
+            continue
+        reason = None
+        for source in direct:
+            hours = abs((parse_date(article["published_at"]) - parse_date(source["published_at"])).total_seconds()) / 3600
+            features = source["features"]
+            if hours > 36:
+                continue
+            if story["event"] == "game":
+                teams = find_teams(text, basketball_context=True)
+                if len(features["teams"]) == 2 and teams == features["teams"]:
+                    reason = "Context about the same matchup"
+            elif story["event"] == "injury":
+                subjects = features.get("subjects", [])
+                body_parts = set(features.get("body_parts", []))
+                if any(person in text for person in subjects) and body_parts & set(text.split()):
+                    reason = "Context about the same player's injury"
+            if reason:
+                break
+        if reason and not any(likely_copy(article, other) for other in direct + [item[0] for item in matches]):
+            matches.append((article, reason))
+    matches.sort(key=lambda item: (item[0]["published_at"], item[0]["canonical_url"]), reverse=True)
+    return [dict(title=article["title"], url=article["url"], publisher=article["publisher_name"],
+                 published_at=article["published_at"], reason=reason)
+            for article, reason in matches[:5]]
+
+
 def process_report(report):
     mode = report.get("mode")
     provider = report.get("provider")
@@ -391,13 +426,16 @@ def process_report(report):
         except (KeyError, ValueError, TypeError) as error:
             skipped.append(dict(reason=str(error)))
     included = [article for article in articles.values() if article["decision"] == "included"]
+    stories = group_articles(included)
+    for story in stories:
+        story["related_reading"] = related_reading(story, list(articles.values()))
     return dict(source=provider, mode=mode, input_complete=bool(report.get("complete_available_results")),
                 window_start=report["requested_start"], window_end=report["searchable_end"],
                 freshness_delay_hours=report.get("freshness_delay_hours", 12),
                 sources=report.get("sources", []), collected_at=report["generated_at"], articles=list(articles.values()),
                 collection_activity=report.get("collection_activity", []),
                 decisions=dict(Counter(article["decision"] for article in articles.values())),
-                skipped_records=skipped, stories=group_articles(included), ranked=False)
+                skipped_records=skipped, stories=stories, ranked=False)
 
 
 def write_report(result, output):

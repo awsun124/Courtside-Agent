@@ -147,7 +147,8 @@ def score_story(story, article_index, window_start, window_end, as_of, settings)
                 score=sum(points.values()), eligible=not reasons, exclusion_reasons=reasons,
                 publishers=sorted({article["publisher_name"] for article in evidence.values()}),
                 evidence_urls=sorted(article["url"] for article in evidence.values()),
-                reporting_groups=groups, injury_updates=injury_updates, has_rumor=bool(story.get("has_rumor")),
+                reporting_groups=groups, injury_updates=injury_updates,
+                related_reading=story.get("related_reading", []), has_rumor=bool(story.get("has_rumor")),
                 needs_review=bool(story.get("needs_review", True)),
                 breakdown=dict(
                     coverage=dict(score=coverage, points=points["coverage"], independent_publishers=publisher_count,

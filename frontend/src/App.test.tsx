@@ -44,6 +44,21 @@ describe('Court Side dashboard', () => {
     expect(screen.getByRole('link', { name: 'Read the methodology' }).getAttribute('href')).toBe('/ranking')
   })
 
+  it('shows related reading separately from scored sources', async () => {
+    const latest = makeLatest()
+    latest.briefing!.stories[0].related_reading = [{
+      title: 'Analysis of the same matchup', url: 'https://context.example.com/analysis',
+      publisher: 'Context Sports', published_at: '2026-11-08T10:00:00Z', reason: 'Context about the same matchup',
+    }]
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    fireEvent.click(screen.getByText('Related reading'))
+    expect(screen.getByRole('link', { name: 'Analysis of the same matchup' }).getAttribute('href')).toBe('https://context.example.com/analysis')
+    expect(screen.getByText(/These links do not count toward the score/)).toBeTruthy()
+    expect(fetchMock.mock.calls.some(([path]) => String(path).startsWith('/api/stories/'))).toBe(false)
+  })
+
   it('does not silently switch to sample data when the API is down', async () => {
     fetchMock.mockRejectedValue(new Error('Offline'))
     render(<App />)
