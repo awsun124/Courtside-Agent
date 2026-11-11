@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Story } from './types'
 import { formatDate, plural, timeAgo, windowDays } from './format'
 import { Icon } from './Icons'
@@ -6,25 +7,31 @@ import SampleInvestigation from './SampleInvestigation'
 import { useBriefing } from './useBriefing'
 import SiteHeader from './SiteHeader'
 import RankingPage from './RankingPage'
+import SharedStory from './SharedStory'
+import { useReading, storyKey } from './reading'
 import CollectionActivity from './CollectionActivity'
 import StoryFilters, { useStoryFilters } from './StoryFilters'
 
 export default function App() {
-  return window.location.pathname.replace(/\/$/, '') === '/ranking' ? <RankingPage /> : <Dashboard />
+  return window.location.pathname.replace(/\/$/, '') === '/ranking' ? <RankingPage /> : new URLSearchParams(window.location.search).has('story') ? <SharedStory /> : <Dashboard />
 }
 
 function Dashboard() {
   const state = useBriefing()
+  const reader = useReading()
+  const [savedOnly, setSavedOnly] = useState(false)
+  const [unreadOnly, setUnreadOnly] = useState(false)
   const { data, mode, loading, refreshing, days } = state
   const briefing = data?.briefing
   const schedule = data?.status.schedule
   const automatic = mode === 'live' && Boolean(schedule?.enabled)
   const { filters, setFilters, clearFilters } = useStoryFilters()
-  const filtered = filters.teams.length > 0 || filters.storyType !== 'all' || Boolean(filters.query.trim())
+  const filtered = filters.teams.length > 0 || filters.storyType !== 'all' || Boolean(filters.query.trim()) || unreadOnly
   const normalizeSearch = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
   const searchWords = normalizeSearch(filters.query).trim().split(/\s+/).filter(Boolean)
-  const matchesFilters = (story: Story) => (!filters.teams.length || filters.teams.some(team => story.teams?.includes(team))) && (filters.storyType === 'all' || story.event === filters.storyType) && searchWords.every(word => normalizeSearch(`${story.title} ${story.summary?.text ?? ''}`).includes(word))
+  const matchesFilters = (story: Story) => (!unreadOnly || !reader.reading.read.includes(storyKey(story, mode))) && (!filters.teams.length || filters.teams.some(team => story.teams?.includes(team))) && (filters.storyType === 'all' || story.event === filters.storyType) && searchWords.every(word => normalizeSearch(`${story.title} ${story.summary?.text ?? ''}`).includes(word))
   const stories = briefing?.stories.filter(matchesFilters) ?? []
+  const bookmarks = reader.reading.bookmarks.filter(entry => entry.mode === mode && matchesFilters(entry.story))
   const nextUpdateMinutes = schedule ? Math.max(0, Math.ceil((Date.parse(schedule.next_update_at) - state.now) / 60000)) : 0
 
   const candidates = briefing?.candidates.filter(story => !story.rank && matchesFilters(story)) ?? []
@@ -66,25 +73,37 @@ function Dashboard() {
       {isStale && <div className="notice"><strong>This briefing is getting old.</strong><span>{automatic ? 'The daily collection is overdue. Showing the last saved edition.' : 'It has been more than six hours since the last successful collection.'}</span></div>}
       {pendingWindow && <div className="notice"><strong>Refresh to load the past {days} {days === 1 ? 'day' : 'days'}.</strong><span>You’re still viewing the saved {actualDays}-day briefing.</span></div>}
 
-      {briefing && <StoryFilters filters={filters} onChange={setFilters} onClear={clearFilters} />}
+      {(briefing || savedOnly) && <StoryFilters filters={filters} onChange={setFilters} onClear={clearFilters} />}
+
+      <section className="reading-controls" aria-label="Reading preferences">
+        <label><input type="checkbox" checked={reader.reading.hideSpoilers} onChange={event => reader.setSpoilers(event.target.checked)} />Hide game spoilers</label>
+        <label><input type="checkbox" checked={unreadOnly} onChange={event => setUnreadOnly(event.target.checked)} />Unread only</label>
+        <button className="text-button" aria-pressed={savedOnly} onClick={() => setSavedOnly(!savedOnly)}>{savedOnly ? 'Show latest stories' : 'Show bookmarks'}</button>
+        <p>Bookmarks and read status stay in this browser. Mark a story as read when you finish it.</p>
+      </section>
+      {reader.storageError && <p className="notice" role="status">Browser storage is unavailable. Bookmarks and reading choices will last only for this visit.</p>}
 
       <SampleInvestigation active={mode === 'sample'} />
 
       <div className="dashboard-layout">
         <section id="briefing" className="news-column" aria-label="NBA briefing" aria-busy={loading || refreshing}>
-          <div className="section-heading"><div><p className="eyebrow">{mode === 'sample' ? 'FICTIONAL COVERAGE' : 'ACROSS THE LEAGUE'}</p><h2>The stories</h2></div><span className="story-count">{briefing ? `${stories.length} / 10` : 'Up to 10'}</span></div>
-          {briefing && filtered && <p className="filter-results" role="status">Showing {stories.length} of {briefing.stories.length} ranked stories and {plural(candidates.length, 'unranked candidate')}. Rank numbers refer to the overall briefing.</p>}
-          {loading && !briefing ? <div className="loading-state" role="status"><div className="loading-line" /><h3>Loading the saved briefing…</h3><p>Getting the stories and source details.</p></div>
+          <div className="section-heading"><div><p className="eyebrow">{mode === 'sample' ? 'FICTIONAL COVERAGE' : 'ACROSS THE LEAGUE'}</p><h2>{savedOnly ? 'Bookmarked stories' : 'The stories'}</h2></div><span className="story-count">{savedOnly ? `${bookmarks.length} saved` : briefing ? `${stories.length} / 10` : 'Up to 10'}</span></div>
+          {briefing && filtered && !savedOnly && <p className="filter-results" role="status">Showing {stories.length} of {briefing.stories.length} ranked stories and {plural(candidates.length, 'unranked candidate')}. Rank numbers refer to the overall briefing.</p>}
+          {savedOnly ? <>
+            <p className="filter-results">Saved editions keep their original dates, ranks, and scores. Up to 50 bookmarks are kept in this browser.</p>
+            {bookmarks.length === 0 && <p className="empty-ranking">No bookmarks match this view. Bookmark a story or adjust your filters.</p>}
+            {bookmarks.map(entry => <div key={`${entry.mode}-${entry.story.id}`}><p className="bookmark-edition">Saved edition · {formatDate(entry.briefing.as_of, true)}</p><StoryCard story={entry.story} briefing={entry.briefing} mode={entry.mode} reader={reader} /></div>)}
+          </> : loading && !briefing ? <div className="loading-state" role="status"><div className="loading-line" /><h3>Loading the saved briefing…</h3><p>Getting the stories and source details.</p></div>
             : !briefing ? <div className="empty-state"><span className="empty-number">00</span><h3>{state.error ? 'The briefing is unavailable.' : 'The first briefing starts here.'}</h3><p>{state.error ? 'Your saved news will appear when the API is available again.' : mode === 'sample' ? 'Create a sample briefing to explore the layout with fictional news.' : automatic ? 'News is collected daily at 6 AM Eastern while the server is running. You can also try the sample edition.' : 'Refresh to collect recent NBA coverage. You can also try the clearly labeled sample edition.'}</p>
                 {!state.error && !automatic && <button className="secondary-button" disabled={refreshing || loading || state.retrySeconds > 0} onClick={() => void state.refresh()}>{mode === 'sample' ? 'Create sample briefing' : 'Collect the first briefing'}<Icon name="arrow" /></button>}
               </div>
               : <>
-                {filtered && stories.length === 0 && candidates.length === 0 && <div className="empty-ranking"><p>No saved stories match these filters. Try another keyword, team, or story type.</p><button className="text-button" onClick={clearFilters}>Show all stories</button></div>}
+                {filtered && stories.length === 0 && candidates.length === 0 && <div className="empty-ranking"><p>No saved stories match these filters. Try another keyword, team, or story type.</p><button className="text-button" onClick={() => { clearFilters(); setUnreadOnly(false) }}>Show all stories</button></div>}
                 {briefing.experimental && <div className="coverage-note"><span className="tag">Provisional</span><p>{mode === 'sample' ? 'Fictional stories run through the same scoring and evidence checks.' : 'This collection is limited. Scores describe the reporting we have, and remain subject to review.'}</p></div>}
                 {briefing.stories.length === 0 && <div className="empty-ranking"><span className="empty-ranking-icon">0</span><div><h3>Not enough independent coverage yet.</h3><p>{candidates.length ? `${plural(candidates.length, 'candidate')} below still ${candidates.length === 1 ? 'needs' : 'need'} more reporting before entering the ranking.` : 'No stories in this collection meet the evidence minimum.'} We show fewer stories when the evidence is limited.</p></div></div>}
-                {stories.map(story => <StoryCard key={`${mode}-${briefing.briefing_id}-${story.id}`} story={story} briefing={briefing} mode={mode} />)}
+                {stories.map(story => <StoryCard key={`${mode}-${briefing.briefing_id}-${story.id}`} story={story} briefing={briefing} mode={mode} reader={reader} />)}
                 {candidates.length > 0 && <><div className="radar-heading"><p className="eyebrow">NOT RANKED YET</p><h2>On our radar</h2><p>Stories to follow, with provisional scores and less supporting coverage.</p></div>
-                  {candidates.map(story => <StoryCard key={`${mode}-${briefing.briefing_id}-${story.id}`} story={story} briefing={briefing} mode={mode} />)}</>}
+                  {candidates.map(story => <StoryCard key={`${mode}-${briefing.briefing_id}-${story.id}`} story={story} briefing={briefing} mode={mode} reader={reader} />)}</>}
               </>}
         </section>
 

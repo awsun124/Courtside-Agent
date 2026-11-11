@@ -183,6 +183,103 @@ describe('Court Side dashboard', () => {
     expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
   })
 
+  it('hides game results and source text until explicitly revealed', async () => {
+    const latest = makeLatest()
+    latest.briefing!.stories[0].title = 'Celtics beat Lakers 120-100'
+    latest.briefing!.stories[0].teams = ['boston celtics', 'los angeles lakers']
+    serve(latest)
+    const view = render(<App />)
+    await screen.findByRole('heading', { name: 'Celtics beat Lakers 120-100' })
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Hide game spoilers' }))
+    expect(screen.queryByText('Celtics beat Lakers 120-100')).toBeNull()
+    expect(screen.queryByText(/A fictional NBA game ended/)).toBeNull()
+    expect(screen.queryByText('Sources')).toBeNull()
+    view.unmount()
+    render(<App />)
+    await screen.findByRole('heading', { name: /Result hidden/ })
+    await userEvent.click(screen.getByRole('button', { name: 'Reveal this game' }))
+    expect(screen.getByRole('heading', { name: 'Celtics beat Lakers 120-100' })).toBeTruthy()
+    expect(screen.queryByText('Unread')).toBeNull()
+    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
+  })
+
+  it('keeps bookmarks from older editions and removes them on request', async () => {
+    serve()
+    const view = render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    await userEvent.click(screen.getByRole('button', { name: /^Bookmark$/ }))
+    view.unmount()
+    const next = makeLatest()
+    next.briefing!.briefing_id = 4
+    next.briefing!.stories = []
+    next.briefing!.candidates = []
+    serve(next)
+    render(<App />)
+    await screen.findByText('Not enough independent coverage yet.')
+    await userEvent.click(screen.getByRole('button', { name: 'Show bookmarks' }))
+    expect(screen.getByRole('heading', { name: 'Saved NBA game report' })).toBeTruthy()
+    expect(JSON.parse(localStorage.getItem('courtside.reading')!).bookmarks[0].briefing.briefing_id).toBe(3)
+    await userEvent.click(screen.getByRole('button', { name: 'Remove bookmark' }))
+    expect(screen.getByText(/No bookmarks match/)).toBeTruthy()
+  })
+
+  it('remembers read stories without marking newly collected stories as read', async () => {
+    serve()
+    const view = render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as read' }))
+    view.unmount()
+    const next = makeLatest()
+    const fresh = { ...next.briefing!.stories[0], id: 'new-story', title: 'New injury report', event: 'injury', rank: 2 }
+    next.briefing!.stories.push(fresh)
+    next.briefing!.candidates.push(fresh)
+    serve(next)
+    render(<App />)
+    await screen.findByRole('heading', { name: fresh.title })
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Unread only' }))
+    expect(screen.queryByRole('heading', { name: 'Saved NBA game report' })).toBeNull()
+    expect(screen.getByRole('heading', { name: fresh.title })).toBeTruthy()
+  })
+
+  it('copies a link containing the exact edition and opens it despite saved filters', async () => {
+    const copy = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText: copy } })
+    serve()
+    const view = render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy story link' }))
+    await screen.findByText('Link copied')
+    expect(copy.mock.calls[0][0]).toContain('story=story-one&briefing_id=3&mode=live')
+    view.unmount()
+    localStorage.setItem('courtside.story-filters', JSON.stringify({ teams: ['atlanta hawks'], storyType: 'injury', query: 'unrelated' }))
+    window.history.replaceState(null, '', '/?story=story-one&briefing_id=3&mode=live')
+    fetchMock.mockImplementation(async input => {
+      if (String(input) === '/api/briefings/3?mode=live') return json(makeLatest().briefing)
+      throw new Error('Unexpected request')
+    })
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+  })
+
+  it('offers a copyable link if the clipboard is unavailable', async () => {
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('Denied')) } })
+    serve()
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy story link' }))
+    await screen.findByText('Copy the link below')
+    expect((screen.getByLabelText('Story link') as HTMLInputElement).value).toContain('briefing_id=3')
+  })
+
+  it('shows a missing shared edition honestly without loading different news', async () => {
+    window.history.replaceState(null, '', '/?story=missing&briefing_id=999&mode=live')
+    fetchMock.mockResolvedValue(json({ detail: 'Saved briefing not found' }, 404))
+    render(<App />)
+    await screen.findByRole('alert')
+    expect(screen.getByText('Saved briefing not found')).toBeTruthy()
+    expect(fetchMock.mock.calls).toHaveLength(1)
+  })
+
   it('does not silently switch to sample data when the API is down', async () => {
     fetchMock.mockRejectedValue(new Error('Offline'))
     render(<App />)

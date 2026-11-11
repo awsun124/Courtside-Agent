@@ -358,3 +358,14 @@ details > summary:hover { color: var(--accent); }
 
 .search-filter { display: grid; gap: .5rem; flex: 1 1 260px; font-size: .85rem; font-weight: 600; }
 .search-filter input { min-width: 0; width: 100%; padding: .65rem .75rem; border: 1px solid #b5baad; border-radius: 2px; color: inherit; background: transparent; font: inherit; }
+
+.reading-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; margin-bottom: 1.5rem; }
+.reading-controls label, .reading-toggle { display: flex; align-items: center; gap: .5rem; }
+.reading-controls p { flex-basis: 100%; margin: 0; font-size: .85rem; color: #6e766e; }
+.story-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.25rem; margin: 0 0 1.25rem; }
+.story-actions button { font-size: .85rem; }
+.share-result input { width: 100%; padding: .65rem; font: inherit; }
+.spoiler-notice { padding: 1rem 0; color: #6e766e; }
+.bookmark-edition { color: #6e766e; font-size: .85rem; }
+.shared-story { max-width: 1000px; }
+.shared-story > h1 { margin-top: 2rem; }

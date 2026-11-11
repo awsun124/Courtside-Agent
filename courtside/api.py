@@ -70,6 +70,13 @@ def create_app(database=None, env_file=None, settings_file=None, collector=None,
                 experimental=briefing["experimental"], story_count=len(briefing["stories"]),
                 candidate_count=len(briefing["candidates"])) for briefing in briefings]}
 
+    @app.get("/api/briefings/{briefing_id}")
+    def saved_briefing(briefing_id: int, request: Request, mode: DataMode = "live"):
+        saved = read_briefings(request.app.state.news.database, mode, limit=1, briefing_id=briefing_id)
+        if not saved:
+            raise HTTPException(404, "Saved briefing not found")
+        return saved[0]
+
     @app.get("/api/stories/{story_id}")
     def story(story_id: str, request: Request, mode: DataMode = "live", briefing_id: int | None = Query(default=None, ge=1)):
         saved = request.app.state.news.story(story_id, mode, briefing_id)

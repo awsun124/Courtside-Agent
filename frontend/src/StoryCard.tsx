@@ -4,6 +4,8 @@ import { requestJson } from './api'
 import { formatDate, plural, safeLink } from './format'
 import { Icon } from './Icons'
 import type { Briefing, DataMode, Story, StoryDetail } from './types'
+import { sharedStoryUrl, storyKey } from './reading'
+import type { ReadingActions } from './reading'
 
 const eventLabels: Record<string, string> = { game: 'Game report', injury: 'Injury update', trade: 'Trade news', contract: 'Roster move', league: 'League news', off_court: 'Off-court news', milestone: 'Player milestone' }
 const activityLabels: Record<string, string> = {
@@ -17,7 +19,17 @@ function SourceLink({ url, children }: { url: string; children: ReactNode }) {
   return href ? <a href={href} target="_blank" rel="noopener noreferrer">{children}<Icon name="external" /></a> : <span>{children}</span>
 }
 
-export default function StoryCard({ story, briefing, mode }: { story: Story; briefing: Briefing; mode: DataMode }) {
+export default function StoryCard({ story, briefing, mode, reader }: { story: Story; briefing: Briefing; mode: DataMode; reader?: ReadingActions }) {
+  const [revealed, setRevealed] = useState(false)
+  const [shareState, setShareState] = useState('')
+  const hidden = reader?.reading.hideSpoilers && story.event === 'game' && !revealed
+  const read = reader?.reading.read.includes(storyKey(story, mode))
+  const bookmarked = reader?.reading.bookmarks.some(entry => storyKey(entry.story, entry.mode) === storyKey(story, mode))
+  const shareUrl = sharedStoryUrl(story, briefing, mode)
+  async function copyLink() {
+    try { await navigator.clipboard.writeText(shareUrl); setShareState('Link copied') }
+    catch { setShareState('Copy the link below') }
+  }
   const [detail, setDetail] = useState<StoryDetail | null>(null)
   const [sourceState, setSourceState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const controller = useRef<AbortController | null>(null)
@@ -70,7 +82,16 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
         {story.has_rumor && <span className="tag rumor">Unconfirmed</span>}
         {!story.rank && <span className="candidate-label">Needs more coverage</span>}
       </div>
-      <h3>{story.title}</h3>
+      {reader && <div className="story-actions">
+        {!read && <span className="tag">Unread</span>}
+        <button className="text-button" aria-pressed={Boolean(bookmarked)} onClick={() => reader.bookmark(story, briefing, mode)}>{bookmarked ? 'Remove bookmark' : 'Bookmark'}</button>
+        {!read && <button className="text-button" onClick={() => reader.markRead(story, mode)}>Mark as read</button>}
+        <button className="text-button" onClick={() => void copyLink()}>Copy story link</button>
+      </div>}
+      {shareState && <div className="share-result"><p role="status">{shareState}</p>{shareState !== 'Link copied' && <label>Story link<input readOnly value={shareUrl} onFocus={event => event.target.select()} /></label>}</div>}
+      <h3>{hidden ? `${story.teams?.length ? story.teams.map(team => team.replace(/\b\w/g, letter => letter.toUpperCase())).join(' vs. ') : 'NBA game'} · Result hidden` : story.title}</h3>
+      {hidden ? <div className="spoiler-notice"><p>Game headlines, summaries, and source details are hidden to avoid revealing the result.</p><button className="secondary-button" onClick={() => { setRevealed(true); reader?.markRead(story, mode) }}>Reveal this game</button></div> : <>
+
       {summary ? <>
         <p className="source-caption">From the reporting</p>
         <p className="story-summary">{summary.text}</p>
@@ -175,6 +196,7 @@ export default function StoryCard({ story, briefing, mode }: { story: Story; bri
           </div>
         </details>
       </div>
+      </>}
     </div>
   </article>
 }

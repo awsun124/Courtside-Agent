@@ -55,3 +55,26 @@ that combined text, ignoring case and accents. Search combines with team and
 story-type filters, preserves overall ranks, and makes no additional API calls.
 It does not search full articles or related-reading links. The query is remembered
 in this browser alongside filter choices and can be cleared separately.
+
+## Reading features
+
+Hide game spoilers replaces game headlines with team names and withholds
+summaries, source headlines, and investigation details until Reveal this game
+is pressed. It is applied to the briefing, bookmarks, and shared story pages.
+It does not rewrite reporting or promise to hide results mentioned in non-game
+stories. Rankings remain visible. The preference is saved in browser storage.
+
+Bookmark saves a story and its edition metadata in this browser, so it can
+remain available after the next daily collection. Show bookmarks opens this
+local list with the same filters. It keeps up to 50 entries, removing the
+oldest when full. Source details still require the original edition on the
+server. Unread labels persist until Mark as read or Reveal this game is used.
+Unread only filters the current view. Up to 2,000 read story IDs are retained,
+with separate IDs for sample and live data. A regrouped event with a new ID
+may appear unread again.
+
+Copy story link copies an exact saved edition link, with a selectable URL
+fallback if clipboard access fails. The local development URL is reachable
+only from your computer. Old links require retaining the database editions.
+No accounts or cross-device syncing are provided. If browser storage is
+blocked or full, a notice explains that changes will last only for that visit.

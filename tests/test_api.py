@@ -289,6 +289,19 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.calls, 1)
 
+    async def test_shared_briefing_reads_exact_saved_edition_without_collection(self):
+        first = (await self.refresh()).json()["briefing"]
+        self.now += timedelta(days=1)
+        await self.refresh()
+        calls = self.calls
+        response = await self.client.get(f"/api/briefings/{first['briefing_id']}?mode=live")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["briefing_id"], first["briefing_id"])
+        self.assertEqual(response.json()["as_of"], first["as_of"])
+        self.assertEqual((await self.client.get(f"/api/briefings/{first['briefing_id']}?mode=sample")).status_code, 404)
+        self.assertEqual((await self.client.get("/api/briefings/99999")).status_code, 404)
+        self.assertEqual(self.calls, calls)
+
     async def test_stale_state_and_story_sources_use_saved_snapshot(self):
         first = (await self.refresh()).json()["briefing"]
         story_id = first["candidates"][0]["id"]

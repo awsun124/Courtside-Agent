@@ -116,3 +116,12 @@ and using filters do not make source API calls. Sample refreshes still work.
 The manual refresh limits above apply only when scheduling is disabled for
 local tooling or tests. See [Daily collection](schedule.md) for persistence,
 startup, and failure behavior.
+
+## Shared story links
+
+`GET /api/briefings/{briefing_id}?mode=live` returns one saved edition without
+collecting news. The requested mode must match the stored edition, otherwise
+the response is 404. The frontend uses `/?story=ID&briefing_id=NUMBER&mode=live`
+to open a story from that edition, independent of the visitor's saved filters.
+Missing editions or stories show an error rather than substituting newer news.
+Links work for other people once the app is hosted at a reachable address.
