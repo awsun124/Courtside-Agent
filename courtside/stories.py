@@ -117,6 +117,10 @@ def inspect_article(article):
     main_text = title + " " + lead
     title_text = clean_text(title)
     text = clean_text(main_text)
+    if "/liveblogs/" in article["url"] or re.search(r"\b(live (?:nba )?updates|player ratings)\b", title_text):
+        return "review", "Live updates or player evaluation rather than a final game report", {}
+    if re.match(r"(?:(?:\d+|three|five|key) )?takeaways\b", clean_text(description)) or "small ball lineup" in title_text:
+        return "review", "Game analysis rather than direct result reporting", {}
     if re.search(r"\b(prop bets?|best bets?|betting odds|promo code|referral code|prediction odds|predictions odds|sportsbook)\b", text) or "/betting/" in article["url"]:
         return "excluded", "Betting preview or promotion", {}
     if re.search(r"\b(relive|on this day|look back|rewind|flashback)\b", title_text):
@@ -132,7 +136,7 @@ def inspect_article(article):
         return "review", "Award announcement needs separate event classification", {}
     if re.search(r"\b(best|worst)\b.{0,50}\b(player|team|contract)\b", title_text):
         return "review", "Player or team evaluation, not a reported transaction", {}
-    if re.search(r"\b(impressed|applaud|praise)\b", title_text):
+    if re.search(r"\b(impressed|applaud|praises?|praised|praising)\b", title_text):
         return "review", "Reaction or commentary rather than direct event reporting", {}
     if re.search(r"\b(jersey swap|exchange jerseys|trade proposal|mock trade|trade idea|urged to trade|trade deadline plans|trade deadline opportunity)\b", title_text):
         return "review", "Side event or proposed move rather than a new reported game or transaction", {}
@@ -197,6 +201,13 @@ def inspect_article(article):
                 event = "game"
     if event is None:
         return "review", "No specific supported event in the headline or opening description", {}
+    if event == "game" and re.search(r"\b(talks|discusses|reacts)\b", title_text):
+        return "review", "Interview or reaction that mentions a game rather than reporting its result", {}
+    if event == "game":
+        if re.search(r"\bmore than (?:just )?(?:one|a) win\b|\bjoins\b.*\b(historic feat|history|record)\b", title_text):
+            return "review", "Analysis or milestone coverage rather than a direct game report", {}
+        if not re.search(r"\b(wins?|won|victory|defeats?|beats?|scored|scores?|leads?|lifts?|powers?|lost|loses?|routs?|humiliates?|humiliated|blots?|hold off|holds off)\b", title_text):
+            return "review", "Game result appears only in supporting text, not the headline's main event", {}
     if not teams and event not in {"league", "off_court", "milestone"}:
         return "review", "No clear NBA team in the headline or opening description", {}
     if event == "injury" and re.search(r"\b(questions whether|injury problems|offseason workouts|injury trends)\b", text) and not BODY_PARTS & set(text.split()):
@@ -341,6 +352,15 @@ def process_report(report):
     end = parse_date(report["searchable_end"])
     if start >= end:
         raise ValueError("Invalid report date range")
+    article_pages = set()
+    for original in report["articles"]:
+        if isinstance(original, dict) and isinstance(original.get("title"), str) and isinstance(original.get("url"), str):
+            try:
+                parts = urlsplit(canonical_url(original["url"]))
+                if "/gallery/" not in parts.path:
+                    article_pages.add((parts.hostname, clean_text(original["title"])))
+            except ValueError:
+                pass
     articles, skipped = {}, []
     for original in report["articles"]:
         try:
@@ -356,6 +376,10 @@ def process_report(report):
             parse_date(original.get("collected_at"))
             if not start <= published <= end:
                 raise ValueError("Publication date outside the available window")
+            parts = urlsplit(canonical)
+            if "/gallery/" in parts.path and (parts.hostname, clean_text(original["title"])) in article_pages:
+                skipped.append(dict(url=original["url"], reason="Alternate gallery page for an existing article"))
+                continue
             if canonical in articles:
                 skipped.append(dict(url=original["url"], reason="Repeated article URL"))
                 continue

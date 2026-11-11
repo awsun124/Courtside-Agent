@@ -247,6 +247,42 @@ class StoryTests(unittest.TestCase):
         articles[0]['published_at'] = '2026-11-07T21:00:00Z'
         self.assertEqual(len(process_report(report(articles))['stories']), 2)
 
+    def test_live_updates_ratings_interviews_and_analysis_do_not_count_as_results(self):
+        cases = [
+            ('Boston Celtics vs. Philadelphia 76ers Live NBA Updates, Scores and Highlights', ''),
+            ('Celtics Player Ratings: George Goes Off In Stunning Blowout Win Against 76ers', ''),
+            ('Jayson Tatum Talks Jaylen Brown Matchup As Celtics Beat 76ers', ''),
+            ('Kevin Durant Jumps on Jovic, Nuggets Early in Bounceback Win', "Three Takeaways from the Rockets' victory against Denver"),
+            ('Rockets Small-Ball Lineup Beats Jokic When a Forward Plays Center', 'The Houston Rockets beat the Denver Nuggets 110-100 in an NBA game.')]
+        for title, description in cases:
+            with self.subTest(title=title):
+                processed = process_report(report([article(title, description)]))
+                self.assertEqual(processed['articles'][0]['decision'], 'review')
+                self.assertEqual(processed['stories'], [])
+        direct = article('Rockets beat Nuggets 110-100 in NBA game', 'Houston ended a two-game losing streak.')
+        self.assertEqual(process_report(report([direct]))['articles'][0]['decision'], 'included')
+
+    def test_incidental_result_in_description_does_not_make_analysis_a_game_report(self):
+        titles = ['Pistons playing to identity and with pride',
+                  'Why the Pistons lineup got smaller when their opponent got bigger',
+                  'Back Win Over Washington Was More Than Just One Win',
+                  'Pistons Unleash Their Identity, Bickerstaff Praises Winning Basketball',
+                  'Three Numbers that Help Explain How the Wizards Bungled a Scoring Gem',
+                  'Mavericks Star Cooper Flagg Joins Kevin Durant With Historic Feat in Pacers Win']
+        for title in titles:
+            with self.subTest(title=title):
+                saved = article(title, 'The Detroit Pistons beat the Washington Wizards 122-111 in an NBA game.')
+                self.assertEqual(process_report(report([saved]))['articles'][0]['decision'], 'review')
+
+    def test_alternate_gallery_does_not_repeat_an_article_link(self):
+        first = article('Pistons beat Wizards 122-111 in NBA game', '', url='https://sports.example.com/game')
+        gallery = {**first, 'url': 'https://sports.example.com/gallery/game'}
+        for records in ([first, gallery], [gallery, first]):
+            processed = process_report(report(records))
+            self.assertEqual(len(processed['articles']), 1)
+            self.assertEqual(processed['stories'][0]['article_urls'], [first['url']])
+            self.assertIn('gallery', processed['skipped_records'][0]['reason'])
+
     def test_award_and_weekly_preview_are_not_injury_corroboration(self):
         articles = [article("Lakers Star Luka Doncic Named NBA Player of the Week Amid Historic Start",
                             "The Lakers announced major NBA news for Luka Doncic following his brief injury absence."),

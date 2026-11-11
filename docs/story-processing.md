@@ -17,6 +17,11 @@ Roundups and schedules go to review because one article may describe several
 events. Articles without a clear team or supported event also go to review.
 
 All article decisions and reasons are saved, including excluded articles.
+Game candidates need a result or performance cue in the headline. A result
+mentioned only in an interview or analysis description does not establish direct
+game coverage. Live updates, player ratings, and milestone-focused pieces stay
+in review. An alternate gallery URL is skipped when the same publisher supplies
+an article with the identical headline.
 
 ## Story groups
 
