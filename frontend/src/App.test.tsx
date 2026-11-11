@@ -26,6 +26,7 @@ function serve(latest = makeLatest()) {
 }
 
 beforeEach(() => {
+  localStorage.clear()
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(Date, 'now').mockReturnValue(now)
@@ -65,7 +66,8 @@ describe('Court Side dashboard', () => {
     serve(latest)
     render(<App />)
     await screen.findByRole('heading', { name: 'Saved NBA game report' })
-    await userEvent.selectOptions(screen.getByLabelText('Team'), 'boston celtics')
+    fireEvent.click(screen.getByText('Teams · All teams'))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Boston Celtics' }))
     expect(screen.getByRole('heading', { name: 'Saved NBA game report' })).toBeTruthy()
     await userEvent.selectOptions(screen.getByLabelText('Story type'), 'injury')
     expect(screen.queryByRole('heading', { name: 'Saved NBA game report' })).toBeNull()
@@ -73,6 +75,58 @@ describe('Court Side dashboard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
     expect(screen.getByRole('heading', { name: 'Saved NBA game report' })).toBeTruthy()
     expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
+  })
+
+  it('includes either selected team and keeps original ranks', async () => {
+    const latest = makeLatest()
+    const first = latest.briefing!.stories[0]
+    first.teams = ['boston celtics']
+    const second = { ...first, id: 'second', title: 'Saved Lakers report', rank: 4, teams: ['los angeles lakers'] }
+    latest.briefing!.stories.push(second)
+    latest.briefing!.candidates.push(second)
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: first.title })
+    fireEvent.click(screen.getByText('Teams · All teams'))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Boston Celtics' }))
+    expect(screen.queryByRole('heading', { name: second.title })).toBeNull()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Los Angeles Lakers' }))
+    expect(screen.getByRole('heading', { name: first.title })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: second.title })).toBeTruthy()
+    expect(screen.getByLabelText('Rank 4').textContent).toBe('04')
+    expect(screen.getByText(/Showing 2 of 2 ranked stories/)).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'Remove Boston Celtics filter' }))
+    expect(screen.queryByRole('heading', { name: first.title })).toBeNull()
+    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
+  })
+
+  it('restores filters after remounting even for teams with no saved coverage', async () => {
+    serve()
+    const view = render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    fireEvent.click(screen.getByText('Teams · All teams'))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Atlanta Hawks' }))
+    await userEvent.selectOptions(screen.getByLabelText('Story type'), 'injury')
+    view.unmount()
+    render(<App />)
+    await screen.findByText(/No saved stories match/)
+    expect(screen.getByRole('button', { name: 'Remove Atlanta Hawks filter' })).toBeTruthy()
+    expect((screen.getByLabelText('Story type') as HTMLSelectElement).value).toBe('injury')
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(JSON.parse(localStorage.getItem('courtside.story-filters')!)).toEqual({ teams: [], storyType: 'all' })
+    expect(screen.getByRole('heading', { name: 'Saved NBA game report' })).toBeTruthy()
+  })
+
+  it('ignores damaged saved filters and works when browser storage is blocked', async () => {
+    localStorage.setItem('courtside.story-filters', '{broken')
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage blocked') })
+    serve()
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    await userEvent.selectOptions(screen.getByLabelText('Story type'), 'injury')
+    expect(screen.getByText(/No saved stories match/)).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(screen.getByRole('heading', { name: 'Saved NBA game report' })).toBeTruthy()
   })
 
   it('shows the daily schedule and reloads saved news without a collection request', async () => {

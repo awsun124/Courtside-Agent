@@ -3,6 +3,10 @@
 The standard FastAPI app collects the past seven days once daily at 6 AM
 Eastern. One saved edition serves every visitor. Team and story-type filters
 run in the browser over that edition, preserving the overall scores and ranks.
+Users can select several teams, matching any of them, together with a story type.
+Choices are remembered in local browser storage and can be removed individually
+or cleared together. All 30 teams remain selectable even with no saved coverage.
+Preferences stay on that browser, without an account or cross-device syncing.
 No accounts, additional news calls, or personalized model requests are needed.
 Team choices come from teams identified in direct story evidence. These
 filters search saved candidates, not every article in the collection.

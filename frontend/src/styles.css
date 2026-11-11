@@ -340,8 +340,18 @@ details > summary:hover { color: var(--accent); }
   .spinning { animation: none; }
 }
 
-.story-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem 1.5rem; padding: 1.25rem 0; border-bottom: 1px solid var(--line, #dcded4); margin-bottom: 1.5rem; }
-.story-filters label { display: grid; gap: .5rem; font-size: .85rem; font-weight: 600; }
-.story-filters select { max-width: 100%; padding: .65rem 2rem .65rem .75rem; color: inherit; background: transparent; border: 1px solid #b5baad; border-radius: 2px; font: inherit; }
-.story-filters p { flex: 1 1 220px; margin: 0; font-size: .85rem; color: #6e766e; }
-@media (max-width: 600px) { .story-filters label { width: 100%; } }
+.story-filters { padding: 1.25rem 0; border-bottom: 1px solid #dcded4; margin-bottom: 1.5rem; }
+.filter-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem 1.5rem; }
+.type-filter { display: grid; gap: .5rem; font-size: .85rem; font-weight: 600; }
+.story-filters select, .team-picker summary { padding: .65rem .75rem; color: inherit; background: transparent; border: 1px solid #b5baad; border-radius: 2px; font: inherit; }
+.team-picker { flex: 1 1 290px; }
+.team-picker summary { cursor: pointer; }
+.team-picker fieldset { margin: .75rem 0 0; border: 1px solid #b5baad; padding: 1rem; }
+.team-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .75rem; margin-top: 1rem; }
+.team-options label { display: flex; align-items: center; gap: .5rem; font-size: .9rem; cursor: pointer; }
+.team-options input { accent-color: #ad4932; width: 1rem; height: 1rem; }
+.story-filters p, .filter-results { margin: .75rem 0 0; font-size: .85rem; color: #6e766e; }
+.filter-results { margin: 0 0 1.5rem; }
+.active-filters { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.active-filters button { padding: .35rem .65rem; border: 1px solid #b5baad; border-radius: 2px; background: transparent; color: inherit; font: inherit; font-size: .85rem; cursor: pointer; }
+@media (max-width: 600px) { .team-picker, .type-filter { width: 100%; } }

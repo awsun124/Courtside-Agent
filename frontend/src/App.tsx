@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import type { Story } from './types'
 import { formatDate, plural, timeAgo, windowDays } from './format'
 import { Icon } from './Icons'
@@ -8,6 +7,7 @@ import { useBriefing } from './useBriefing'
 import SiteHeader from './SiteHeader'
 import RankingPage from './RankingPage'
 import CollectionActivity from './CollectionActivity'
+import StoryFilters, { useStoryFilters } from './StoryFilters'
 
 export default function App() {
   return window.location.pathname.replace(/\/$/, '') === '/ranking' ? <RankingPage /> : <Dashboard />
@@ -19,10 +19,9 @@ function Dashboard() {
   const briefing = data?.briefing
   const schedule = data?.status.schedule
   const automatic = mode === 'live' && Boolean(schedule?.enabled)
-  const [team, setTeam] = useState('all')
-  const [storyType, setStoryType] = useState('all')
-  const teams = [...new Set(briefing?.candidates.flatMap(story => story.teams ?? []) ?? [])].sort()
-  const matchesFilters = (story: Story) => (team === 'all' || story.teams?.includes(team)) && (storyType === 'all' || story.event === storyType)
+  const { filters, setFilters, clearFilters } = useStoryFilters()
+  const filtered = filters.teams.length > 0 || filters.storyType !== 'all'
+  const matchesFilters = (story: Story) => (!filters.teams.length || filters.teams.some(team => story.teams?.includes(team))) && (filters.storyType === 'all' || story.event === filters.storyType)
   const stories = briefing?.stories.filter(matchesFilters) ?? []
   const nextUpdateMinutes = schedule ? Math.max(0, Math.ceil((Date.parse(schedule.next_update_at) - state.now) / 60000)) : 0
 
@@ -65,23 +64,20 @@ function Dashboard() {
       {isStale && <div className="notice"><strong>This briefing is getting old.</strong><span>{automatic ? 'The daily collection is overdue. Showing the last saved edition.' : 'It has been more than six hours since the last successful collection.'}</span></div>}
       {pendingWindow && <div className="notice"><strong>Refresh to load the past {days} {days === 1 ? 'day' : 'days'}.</strong><span>You’re still viewing the saved {actualDays}-day briefing.</span></div>}
 
-      {briefing && <section className="story-filters" aria-label="Filter saved stories">
-        <label>Team<select value={team} onChange={event => setTeam(event.target.value)}><option value="all">All teams</option>{teams.map(name => <option key={name} value={name}>{name.replace(/\b\w/g, letter => letter.toUpperCase())}</option>)}</select></label>
-        <label>Story type<select value={storyType} onChange={event => setStoryType(event.target.value)}><option value="all">All story types</option>{[['game', 'Game reports'], ['injury', 'Injury updates'], ['trade', 'Trade news'], ['contract', 'Roster moves'], ['league', 'League news'], ['off_court', 'Off-court news'], ['milestone', 'Player milestones']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <p>Filters use saved stories. Scores and overall ranks stay the same.</p>
-      </section>}
+      {briefing && <StoryFilters filters={filters} onChange={setFilters} onClear={clearFilters} />}
 
       <SampleInvestigation active={mode === 'sample'} />
 
       <div className="dashboard-layout">
         <section id="briefing" className="news-column" aria-label="NBA briefing" aria-busy={loading || refreshing}>
           <div className="section-heading"><div><p className="eyebrow">{mode === 'sample' ? 'FICTIONAL COVERAGE' : 'ACROSS THE LEAGUE'}</p><h2>The stories</h2></div><span className="story-count">{briefing ? `${stories.length} / 10` : 'Up to 10'}</span></div>
+          {briefing && filtered && <p className="filter-results" role="status">Showing {stories.length} of {briefing.stories.length} ranked stories and {plural(candidates.length, 'unranked candidate')}. Rank numbers refer to the overall briefing.</p>}
           {loading && !briefing ? <div className="loading-state" role="status"><div className="loading-line" /><h3>Loading the saved briefing…</h3><p>Getting the stories and source details.</p></div>
             : !briefing ? <div className="empty-state"><span className="empty-number">00</span><h3>{state.error ? 'The briefing is unavailable.' : 'The first briefing starts here.'}</h3><p>{state.error ? 'Your saved news will appear when the API is available again.' : mode === 'sample' ? 'Create a sample briefing to explore the layout with fictional news.' : automatic ? 'News is collected daily at 6 AM Eastern while the server is running. You can also try the sample edition.' : 'Refresh to collect recent NBA coverage. You can also try the clearly labeled sample edition.'}</p>
                 {!state.error && !automatic && <button className="secondary-button" disabled={refreshing || loading || state.retrySeconds > 0} onClick={() => void state.refresh()}>{mode === 'sample' ? 'Create sample briefing' : 'Collect the first briefing'}<Icon name="arrow" /></button>}
               </div>
               : <>
-                {(team !== 'all' || storyType !== 'all') && stories.length === 0 && candidates.length === 0 && <div className="empty-ranking"><p>No saved stories match these filters. Try another team or story type.</p><button className="text-button" onClick={() => { setTeam('all'); setStoryType('all') }}>Clear filters</button></div>}
+                {filtered && stories.length === 0 && candidates.length === 0 && <div className="empty-ranking"><p>No saved stories match these filters. Try another team or story type.</p><button className="text-button" onClick={clearFilters}>Show all stories</button></div>}
                 {briefing.experimental && <div className="coverage-note"><span className="tag">Provisional</span><p>{mode === 'sample' ? 'Fictional stories run through the same scoring and evidence checks.' : 'This collection is limited. Scores describe the reporting we have, and remain subject to review.'}</p></div>}
                 {briefing.stories.length === 0 && <div className="empty-ranking"><span className="empty-ranking-icon">0</span><div><h3>Not enough independent coverage yet.</h3><p>{candidates.length ? `${plural(candidates.length, 'candidate')} below still ${candidates.length === 1 ? 'needs' : 'need'} more reporting before entering the ranking.` : 'No stories in this collection meet the evidence minimum.'} We show fewer stories when the evidence is limited.</p></div></div>}
                 {stories.map(story => <StoryCard key={`${mode}-${briefing.briefing_id}-${story.id}`} story={story} briefing={briefing} mode={mode} />)}
