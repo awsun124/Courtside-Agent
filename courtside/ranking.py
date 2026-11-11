@@ -144,6 +144,7 @@ def score_story(story, article_index, window_start, window_end, as_of, settings)
                 injury_updates.append(dict(title=article["title"], availability=availability,
                     published_at=article["published_at"], publisher=article["publisher_name"], url=article["url"]))
     return dict(id=story["id"], title=story["title"], event=story["event"], rank=None,
+                teams=sorted({team for article in evidence.values() for team in article.get("features", {}).get("teams", [])}),
                 score=sum(points.values()), eligible=not reasons, exclusion_reasons=reasons,
                 publishers=sorted({article["publisher_name"] for article in evidence.values()}),
                 evidence_urls=sorted(article["url"] for article in evidence.values()),

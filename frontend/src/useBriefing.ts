@@ -93,6 +93,7 @@ export function useBriefing() {
   }
 
   async function refresh() {
+    if (mode === 'live' && data?.status.schedule?.enabled) return
     if (refreshing || serverRunning || loading || retrySeconds > 0) return
     const controller = new AbortController()
     refreshController.current = controller

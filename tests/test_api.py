@@ -58,6 +58,20 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(latest["status"]["empty_reason"], "no_saved_briefing")
         self.assertEqual(self.calls, 0)
 
+    async def test_scheduled_mode_disables_public_live_refresh_and_reports_schedule(self):
+        app = create_app(database=self.database, env_file=self.env_file, collector=self.collect,
+                         clock=lambda: self.now, scheduled=True)
+        with patch("courtside.api.run_schedule", new=unittest.mock.AsyncMock()):
+            async with app.router.lifespan_context(app):
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
+                    latest = (await client.get("/api/briefings/latest")).json()
+                    self.assertTrue(latest["status"]["schedule"]["enabled"])
+                    self.assertEqual((await client.post("/api/refresh", json={"mode": "live"})).status_code, 403)
+                    sample = await client.post("/api/refresh", json={"mode": "sample"})
+                    self.assertEqual(sample.status_code, 200)
+                    self.assertIsNone(sample.json()["status"]["schedule"])
+        self.assertEqual(self.calls, 0)
+
     async def test_sample_mode_works_without_key_and_stays_separate(self):
         self.env_file.unlink()
         with patch.dict("os.environ", {}, clear=True):

@@ -1,5 +1,6 @@
 """Local API for saved NBA briefings and bounded manual refreshes."""
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+import asyncio
 import sqlite3
 from typing import Literal
 
@@ -9,6 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .service import NewsService, PROJECT_ROOT, RefreshError
+from .schedule import run_schedule
 from .llm import ChatProvider
 from .investigation import InvestigationSettings
 from .storage import finish_sample_agent, read_briefings, start_sample_agent
@@ -27,12 +29,22 @@ class SampleInvestigationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-def create_app(database=None, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None, sources_file=None):
+def create_app(database=None, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None, sources_file=None, scheduled=None):
+    automatic = scheduled if scheduled is not None else collector is None and clock is None
+
     @asynccontextmanager
     async def lifespan(app):
         app.state.news = NewsService(database or PROJECT_ROOT / "artifacts/courtside.db",
                                      env_file, settings_file, collector, clock, investigation_file, sources_file)
-        yield
+        app.state.news.daily_schedule = automatic
+        task = asyncio.create_task(run_schedule(app.state.news)) if automatic else None
+        try:
+            yield
+        finally:
+            if task:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
 
     app = FastAPI(title="Court Side", version="0.1.0", lifespan=lifespan)
     app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -67,6 +79,8 @@ def create_app(database=None, env_file=None, settings_file=None, collector=None,
 
     @app.post("/api/refresh")
     def refresh(body: RefreshRequest, request: Request):
+        if automatic and body.mode == "live":
+            raise HTTPException(403, "News updates automatically at 6 AM Eastern. Reload to read the saved briefing.")
         try:
             return request.app.state.news.refresh(body.mode, body.days, body.max_requests)
         except RefreshError as error:

@@ -28,6 +28,7 @@ export interface Story {
   id: string
   title: string
   event: string
+  teams?: string[]
   rank: number | null
   score: number
   eligible: boolean
@@ -129,6 +130,7 @@ export interface RefreshAttempt {
 export interface LatestResponse {
   briefing: Briefing | null
   status: {
+    schedule?: { enabled: boolean; timezone: string; hour: number; next_update_at: string } | null
     state: 'empty' | 'ready' | 'stale'
     data_mode: DataMode
     stale: boolean

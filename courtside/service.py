@@ -9,6 +9,7 @@ from .sources import collect_sources, DEFAULT_SOURCES
 from .feeds import load_sources
 from .free_news import load_key as load_free_news_key, load_settings as load_free_news_settings
 from .ranking import RankingSettings, rank_stories
+from .schedule import schedule_status
 from .sample_data import sample_report
 from .investigate import add_investigations
 from .stories import process_report, parse_date
@@ -27,6 +28,7 @@ class RefreshError(Exception):
 
 class NewsService:
     def __init__(self, database, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None, sources_file=None):
+        self.daily_schedule = False
         self.database = Path(database)
         self.env_file = Path(env_file or PROJECT_ROOT / ".env")
         self.settings_file = Path(settings_file or PROJECT_ROOT / "config/ranking.json")
@@ -49,10 +51,11 @@ class NewsService:
         if last_attempt and last_attempt["status"] == "running" and parse_date(last_attempt["lease_until"]) <= self.clock():
             last_attempt = {**last_attempt, "status": "interrupted", "error": "Previous refresh did not finish"}
         last_success = briefing["as_of"] if briefing else None
-        stale = last_success is not None and (self.clock() - parse_date(last_success)).total_seconds() > 6 * 3600
+        stale = last_success is not None and (self.clock() - parse_date(last_success)).total_seconds() > (26 if self.daily_schedule and mode == "live" else 6) * 3600
         state = "empty" if briefing is None else "stale" if stale else "ready"
         return dict(briefing=briefing, status=dict(state=state, data_mode=mode, stale=stale,
                     last_successful_refresh=last_success, last_attempt=last_attempt,
+                    schedule=schedule_status(self.clock()) if self.daily_schedule and mode == "live" else None,
                     empty_reason="no_saved_briefing" if briefing is None else "no_eligible_stories" if not briefing["stories"] else None))
 
     def story(self, story_id, mode, briefing_id=None):

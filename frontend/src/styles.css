@@ -339,3 +339,9 @@ details > summary:hover { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .spinning { animation: none; }
 }
+
+.story-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem 1.5rem; padding: 1.25rem 0; border-bottom: 1px solid var(--line, #dcded4); margin-bottom: 1.5rem; }
+.story-filters label { display: grid; gap: .5rem; font-size: .85rem; font-weight: 600; }
+.story-filters select { max-width: 100%; padding: .65rem 2rem .65rem .75rem; color: inherit; background: transparent; border: 1px solid #b5baad; border-radius: 2px; font: inherit; }
+.story-filters p { flex: 1 1 220px; margin: 0; font-size: .85rem; color: #6e766e; }
+@media (max-width: 600px) { .story-filters label { width: 100%; } }

@@ -59,6 +59,35 @@ describe('Court Side dashboard', () => {
     expect(fetchMock.mock.calls.some(([path]) => String(path).startsWith('/api/stories/'))).toBe(false)
   })
 
+  it('filters saved stories by team and type without collecting news', async () => {
+    const latest = makeLatest()
+    latest.briefing!.stories[0].teams = ['boston celtics']
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    await userEvent.selectOptions(screen.getByLabelText('Team'), 'boston celtics')
+    expect(screen.getByRole('heading', { name: 'Saved NBA game report' })).toBeTruthy()
+    await userEvent.selectOptions(screen.getByLabelText('Story type'), 'injury')
+    expect(screen.queryByRole('heading', { name: 'Saved NBA game report' })).toBeNull()
+    expect(screen.getByText(/No saved stories match/)).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(screen.getByRole('heading', { name: 'Saved NBA game report' })).toBeTruthy()
+    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
+  })
+
+  it('shows the daily schedule and reloads saved news without a collection request', async () => {
+    const latest = makeLatest()
+    latest.status.schedule = { enabled: true, timezone: 'America/New_York', hour: 6, next_update_at: new Date(now + 3600000).toISOString() }
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    expect(screen.getByText('Updated daily at 6 AM Eastern.')).toBeTruthy()
+    expect(screen.getByText(/Next scheduled update in 1h 0m/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Refresh briefing' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Reload briefing' }))
+    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
+  })
+
   it('does not silently switch to sample data when the API is down', async () => {
     fetchMock.mockRejectedValue(new Error('Offline'))
     render(<App />)
@@ -185,8 +214,8 @@ describe('Court Side dashboard', () => {
     serve(latest)
     render(<App />)
     await screen.findByRole('heading', { name: story.title })
-    await userEvent.click(screen.getByText('Injury updates'))
-    const updates = screen.getByText('Injury updates').closest('details')!
+    await userEvent.click(screen.getByText('Injury updates', { selector: 'summary' }))
+    const updates = screen.getByText('Injury updates', { selector: 'summary' }).closest('details')!
     expect(within(updates).getByText('Reported unavailable')).toBeTruthy()
     expect(within(updates).getByText('Reported available')).toBeTruthy()
     expect(within(updates).getByRole('link', { name: story.title }).getAttribute('href')).toBe('https://second.example.com/return')

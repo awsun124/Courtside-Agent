@@ -106,3 +106,13 @@ show the warnings and candidate evidence rather than inventing ten stories.
 
 
 Live refreshes now also collect the enabled Yahoo NBA feed. See [feed collection](feeds.md) for source policies, per-source status, partial coverage, and investigation restrictions.
+
+## Daily editions
+
+The default app now runs a shared daily collection at 6 AM America/New_York.
+`GET /api/briefings/latest` includes `status.schedule` with `next_update_at`.
+Live `POST /api/refresh` returns 403 in scheduled mode. Reloading saved news
+and using filters do not make source API calls. Sample refreshes still work.
+The manual refresh limits above apply only when scheduling is disabled for
+local tooling or tests. See [Daily collection](schedule.md) for persistence,
+startup, and failure behavior.
