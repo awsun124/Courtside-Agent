@@ -54,7 +54,7 @@ export function useBriefing() {
 
   const lastAttempt = data?.status.last_attempt
   const serverRunning = lastAttempt?.status === 'running' && Date.parse(lastAttempt.lease_until) > now
-  const sourceCooldown = mode === 'live' && lastAttempt && lastAttempt.requests_used > 0 ? Date.parse(lastAttempt.started_at) + 60000 : 0
+  const sourceCooldown = mode === 'live' && lastAttempt && lastAttempt.requests_used > 0 ? Date.parse(lastAttempt.started_at) + 30 * 60 * 1000 : 0
   const retrySeconds = Math.max(0, Math.ceil((Math.max(retryUntil, sourceCooldown) - now) / 1000))
 
   useEffect(() => {

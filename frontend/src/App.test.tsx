@@ -249,6 +249,16 @@ describe('Court Side dashboard', () => {
     expect(screen.getByText('Refresh available in 1 min')).toBeTruthy()
   })
 
+  it('keeps the thirty minute cooldown after reloading saved status', async () => {
+    const latest = makeLatest()
+    latest.status.last_attempt = { id: 4, status: 'partial', requests_used: 5, started_at: new Date(now - 5 * 60000).toISOString(), completed_at: new Date(now - 4 * 60000).toISOString(), lease_until: new Date(now - 3 * 60000).toISOString(), error: null }
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    expect(screen.getByText('Refresh available in 25 min')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Refresh briefing' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('shows stale data and a failed previous source attempt honestly', async () => {
     const latest = makeLatest()
     latest.status.stale = true

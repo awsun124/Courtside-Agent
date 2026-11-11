@@ -71,8 +71,9 @@ live briefing. The server rejects any accidental mode switch from a collector.
 
 SQLite records each refresh attempt before collection starts. It prevents
 overlapping refreshes, including requests handled by separate app instances.
-An active refresh returns HTTP 409. Live requests also have a 60-second cooldown
-between starts and an app-specific allowance of 30 source requests per UTC day.
+An active refresh returns HTTP 409. Live requests have a 30-minute cooldown between starts, shared across clients
+and preserved across restarts. There is no app-level daily source request cap.
+External providers still enforce their own quotas.
 Limit responses use HTTP 429 with `Retry-After`.
 
 The requested allowance is reserved before collection and replaced by the

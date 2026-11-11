@@ -125,7 +125,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(story["investigation"]["status"], "source_restricted")
         detail = (await self.client.get(f"/api/stories/{story['id']}")).json()
         self.assertEqual(detail["articles"][0]["collection_sources"], ["yahoo-nba"])
-        self.now += timedelta(seconds=61)
+        self.now += timedelta(minutes=30)
         def fail(*args):
             raise SourceError("No source available")
         self.app.state.news.collector = fail
@@ -174,7 +174,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_failed_live_source_keeps_previous_briefing(self):
         first = (await self.refresh()).json()["briefing"]
-        self.now += timedelta(seconds=61)
+        self.now += timedelta(minutes=30)
         def fail(report):
             return {**report, "articles": [], "complete_available_results": False,
                     "attempts": [dict(status="failed", error="GNews rate limit")]}
@@ -232,6 +232,17 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Retry-After", response.headers)
         self.assertEqual(self.calls, 1)
 
+    async def test_live_refresh_allowed_at_thirty_minute_boundary(self):
+        await self.refresh()
+        self.now += timedelta(minutes=30, seconds=-1)
+        blocked = await self.refresh()
+        self.assertEqual(blocked.status_code, 429)
+        self.assertIn("30 minutes", blocked.json()["detail"])
+        self.assertLessEqual(int(blocked.headers["Retry-After"]), 2)
+        self.now += timedelta(seconds=1)
+        self.assertEqual((await self.refresh()).status_code, 200)
+        self.assertEqual(self.calls, 2)
+
     async def test_overlapping_refresh_is_rejected(self):
         started, release = threading.Event(), threading.Event()
         def wait(report):
@@ -251,18 +262,18 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.calls, 1)
 
     async def test_expired_refresh_lease_recovers(self):
-        previous = start_refresh(self.database, "live", self.now - timedelta(minutes=5), 1)
+        previous = start_refresh(self.database, "live", self.now - timedelta(minutes=31), 1)
         response = await self.refresh()
         self.assertEqual(response.status_code, 200)
         with closing(sqlite3.connect(self.database)) as connection:
             self.assertEqual(connection.execute("SELECT status FROM refresh_attempts WHERE id=?", (previous["id"],)).fetchone()[0], "failed")
 
-    async def test_daily_request_limit_is_enforced_before_source_call(self):
-        previous = start_refresh(self.database, "live", self.now - timedelta(minutes=5), 30)
-        finish_refresh(self.database, previous["id"], self.now - timedelta(minutes=4), "failed", 30)
+    async def test_previous_request_totals_do_not_block_refresh_after_cooldown(self):
+        previous = start_refresh(self.database, "live", self.now - timedelta(minutes=31), 30)
+        finish_refresh(self.database, previous["id"], self.now - timedelta(minutes=30), "failed", 30)
         response = await self.refresh()
-        self.assertEqual(response.status_code, 429)
-        self.assertEqual(self.calls, 0)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.calls, 1)
 
     async def test_stale_state_and_story_sources_use_saved_snapshot(self):
         first = (await self.refresh()).json()["briefing"]

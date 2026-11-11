@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 import hashlib
 import json
 import math
+import re
 import time
 
 from scripts.validate_gdelt import canonical_url
@@ -146,6 +147,16 @@ class EvidenceTools:
         return getattr(self, name)(**arguments)
 
 
+def source_excerpt(text, limit=240):
+    sentences = [match.end() for match in re.finditer(r'[.!?]["’”\']?(?=\s|$)', text[:limit + 1]) if match.end() <= limit]
+    if sentences:
+        return text[:sentences[-1]].strip()
+    if len(text) <= limit:
+        return text.strip()
+    cutoff = text.rfind(" ", 0, limit + 1)
+    return text[:cutoff if cutoff > 0 else limit].rstrip()
+
+
 class RulesProvider:
     name = "rules"
     uses_llm = False
@@ -171,7 +182,7 @@ class RulesProvider:
             if material and not material["quarantined"]:
                 text = material["material"].get("description") or material["material"].get("title")
                 if text:
-                    claims.append(dict(evidence_id=article_id, quote=text[:240]))
+                    claims.append(dict(evidence_id=article_id, quote=source_excerpt(text)))
             if len(claims) == 2:
                 break
         return dict(name="finish", arguments=dict(claims=claims))
@@ -193,7 +204,8 @@ def supported_summary(claims, retrieved, allowed_ids):
                 not isinstance(quote, str) or not 5 <= len(quote) <= 300 or
                 not any(quote in text for text in material["material"].values())):
             raise ValueError("Summary text must come from retrieved, in-story evidence")
-        lines.append(f"{material['publisher']} reports: {quote}")
+        ending = "" if re.search(r'[.!?…]["’”\']?$', quote) else "…"
+        lines.append(f"{material['publisher']} reports: {quote}{ending}")
         citations.append(dict(evidence_id=article_id, url=material["url"], publisher=material["publisher"],
                               quote=quote, published_at=material["published_at"]))
     if not citations:

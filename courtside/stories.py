@@ -6,6 +6,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 import hashlib
+import html
 import json
 from pathlib import Path
 import re
@@ -47,7 +48,7 @@ BODY_PARTS = {"knee", "ankle", "hamstring", "thumb", "wrist", "shoulder", "foot"
 
 
 def clean_text(text):
-    text = unicodedata.normalize("NFKD", text or "")
+    text = unicodedata.normalize("NFKD", html.unescape(text or ""))
     return " ".join(re.findall(r"[a-z0-9]+", text.encode("ascii", "ignore").decode().lower()))
 
 
@@ -127,7 +128,7 @@ def inspect_article(article):
         return "review", "Historical retrospective, not evidence of a recent event", {}
     if re.search(r"\b(and more|a lot more)\b", text):
         return "review", "Several topics, not one clear story", {}
-    if re.search(r"\b(roundup|wrap|expanded glance|conference glance|sports schedule|how to watch|where to watch)\b", title_text):
+    if re.search(r"\b(round ?up|wrap|expanded glance|conference glance|sports schedule|how to watch|where to watch)\b", title_text):
         return "review", "Several events or a schedule, not one clear story", {}
     basketball_context, context_basis = has_nba_context(article)
     if re.search(r"\b(fantasy|waiver wire|power rankings|player grades|trade grades|grading every|winners and (?:\d+ )?losers|report card|preview|look ahead|lookahead|open thread|weekly recap|week in review|takeaways|observations after|survey|predictions)\b", title_text):
@@ -138,10 +139,12 @@ def inspect_article(article):
         return "review", "Player or team evaluation, not a reported transaction", {}
     if re.search(r"\b(impressed|applaud|praises?|praised|praising)\b", title_text):
         return "review", "Reaction or commentary rather than direct event reporting", {}
-    if re.search(r"\b(jersey swap|exchange jerseys|trade proposal|mock trade|trade idea|urged to trade|trade deadline plans|trade deadline opportunity)\b", title_text):
+    if re.search(r"\b(jersey swap|exchange jerseys|trade proposal|mock trade|trade idea|urged to trade|pushed to trade|trade deadline plans|trade deadline opportunity)\b", title_text):
         return "review", "Side event or proposed move rather than a new reported game or transaction", {}
     if article.get("metadata_only") and re.search(r"\b(trade targets?|trade candidate|trade path|trade suitor|trade exception)\b|\b(could|would|should)\b.*\b(trade|target|suitor|contract)\b", title_text):
         return "review", "Proposed transaction without a clear reported action", {}
+    if re.search(r"\b(flips? off|gives?\b.{0,60}\bthe finger|middle finger|obscene gesture)\b", title_text):
+        return "review", "Fan incident or gesture rather than direct game reporting", {}
     if re.search(r"\b(message|mocks?|reminder|sums up|gets? into it|things the box score|breaks down|makes nba history|historic streak|not hiding feelings)\b|\bsends\b.*\bstatement\b", title_text):
         return "review", "Reaction or analysis that mentions an event rather than reporting its result", {}
     if re.search(r"\bexplains\b.*\bquote\b", title_text):

@@ -104,15 +104,9 @@ def start_refresh(database, mode, now, requests, max_seconds=90):
         if mode == "live":
             last = connection.execute("SELECT started_at FROM refresh_attempts WHERE mode='live' AND requests_used > 0 ORDER BY id DESC LIMIT 1").fetchone()
             if last:
-                remaining = 60 - (now - parse_date(last[0])).total_seconds()
+                remaining = 1800 - (now - parse_date(last[0])).total_seconds()
                 if remaining > 0:
-                    return dict(status_code=429, error="Wait a minute between live refreshes", retry_after=max(1, int(remaining) + 1))
-            today = format_time(now.replace(hour=0, minute=0, second=0, microsecond=0))
-            used = connection.execute("SELECT COALESCE(SUM(requests_used), 0) FROM refresh_attempts WHERE mode='live' AND started_at >= ?", (today,)).fetchone()[0]
-            if used + requests > 30:
-                next_day = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-                return dict(status_code=429, error="This app's daily limit of 30 source requests has been reached",
-                            retry_after=max(1, int((next_day - now).total_seconds()) + 1))
+                    return dict(status_code=429, error="Wait 30 minutes between live refreshes", retry_after=max(1, int(remaining) + 1))
         refresh_id = connection.execute(
             "INSERT INTO refresh_attempts (mode, started_at, lease_until, status, requests_used) VALUES (?, ?, ?, 'running', ?)",
             (mode, timestamp, format_time(now + timedelta(seconds=max_seconds + 15)), requests)).lastrowid

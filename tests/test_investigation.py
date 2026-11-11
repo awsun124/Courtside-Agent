@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from courtside.investigation import (EvidenceTools, InvestigationSettings, RulesProvider,
-                                     evidence_id, investigate_briefing, supported_summary)
+                                     evidence_id, investigate_briefing, supported_summary, source_excerpt)
 from courtside.investigate import add_investigations
 from courtside.llm import ChatProvider
 from courtside.ranking import rank_stories
@@ -29,6 +29,23 @@ def provider_response(name, arguments, call_id="call_test"):
 
 
 class InvestigationTests(unittest.TestCase):
+    def test_excerpts_end_at_sentences_or_whole_words(self):
+        text = "The Knicks won the game. " + "Additional reporting " * 30
+        self.assertEqual(source_excerpt(text), "The Knicks won the game.")
+        text = "Reporting " * 40
+        quote = source_excerpt(text)
+        self.assertTrue(text.startswith(quote))
+        self.assertLessEqual(len(quote), 240)
+        self.assertTrue(quote.endswith("Reporting"))
+
+    def test_incomplete_excerpt_gets_display_ellipsis_without_changing_evidence(self):
+        quote = "The Knicks beat the Bucks on Tue"
+        material = dict(quarantined=False, material={"description": quote}, publisher="Example Sports",
+                        url="https://example.com/game", published_at="2026-11-10T12:00:00Z")
+        summary = supported_summary([dict(evidence_id="source", quote=quote)], {"source": material}, {"source"})
+        self.assertTrue(summary["text"].endswith("Tue…"))
+        self.assertEqual(summary["citations"][0]["quote"], quote)
+
     def test_rules_use_multiple_tools_without_network_or_ranking_changes(self):
         result, briefing = fixtures()
         before = [(story["id"], story["score"], deepcopy(story["breakdown"]), story["rank"]) for story in briefing["candidates"]]

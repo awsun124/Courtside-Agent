@@ -61,6 +61,28 @@ class RelatedReadingTests(unittest.TestCase):
 
 
 class StoryTests(unittest.TestCase):
+    def test_proposals_roundups_and_fan_gestures_stay_out_of_direct_evidence(self):
+        titles = [
+            "Lakers Pushed to Trade for $90M Star PF Over Naz Reid Amid Hot 10-2 Start",
+            "NBA Round Up: Lakers Sign Talent, Warriors Get Injury Update &amp; More",
+            "Paul George gives Sixers fan the finger late in Celtics blowout win",
+        ]
+        for title in titles:
+            for metadata_only in (False, True):
+                with self.subTest(title=title, metadata_only=metadata_only):
+                    saved = article(title, "NBA coverage of the Celtics and 76ers.")
+                    saved["metadata_only"] = metadata_only
+                    result = process_report(report([saved]))
+                    self.assertEqual(result["articles"][0]["decision"], "review")
+                    self.assertEqual(result["stories"], [])
+
+    def test_game_result_remains_direct_while_gesture_is_related_reading(self):
+        direct = article("Celtics beat 76ers 123-101 in NBA game", "Boston Celtics beat Philadelphia 76ers.")
+        gesture = article("Paul George flips off fan after Celtics win over 76ers", "NBA fan incident.", url="https://other.com/gesture")
+        result = process_report(report([direct, gesture]))
+        self.assertEqual(result["stories"][0]["article_urls"], [direct["url"]])
+        self.assertEqual(result["stories"][0]["related_reading"][0]["url"], gesture["url"])
+
     def test_reviewed_news_examples(self):
         cases = json.loads((Path(__file__).parent / "fixtures/news_review.json").read_text())
         for case in cases:
