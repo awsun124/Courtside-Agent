@@ -355,3 +355,6 @@ details > summary:hover { color: var(--accent); }
 .active-filters { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
 .active-filters button { padding: .35rem .65rem; border: 1px solid #b5baad; border-radius: 2px; background: transparent; color: inherit; font: inherit; font-size: .85rem; cursor: pointer; }
 @media (max-width: 600px) { .team-picker, .type-filter { width: 100%; } }
+
+.search-filter { display: grid; gap: .5rem; flex: 1 1 260px; font-size: .85rem; font-weight: 600; }
+.search-filter input { min-width: 0; width: 100%; padding: .65rem .75rem; border: 1px solid #b5baad; border-radius: 2px; color: inherit; background: transparent; font: inherit; }

@@ -113,7 +113,7 @@ describe('Court Side dashboard', () => {
     expect(screen.getByRole('button', { name: 'Remove Atlanta Hawks filter' })).toBeTruthy()
     expect((screen.getByLabelText('Story type') as HTMLSelectElement).value).toBe('injury')
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
-    expect(JSON.parse(localStorage.getItem('courtside.story-filters')!)).toEqual({ teams: [], storyType: 'all' })
+    expect(JSON.parse(localStorage.getItem('courtside.story-filters')!)).toEqual({ teams: [], storyType: 'all', query: '' })
     expect(screen.getByRole('heading', { name: 'Saved NBA game report' })).toBeTruthy()
   })
 
@@ -127,6 +127,47 @@ describe('Court Side dashboard', () => {
     expect(screen.getByText(/No saved stories match/)).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
     expect(screen.getByRole('heading', { name: 'Saved NBA game report' })).toBeTruthy()
+  })
+
+  it('searches title and summary words together with existing filters locally', async () => {
+    const latest = makeLatest()
+    const story = latest.briefing!.stories[0]
+    story.title = 'Curry returns for Warriors'
+    story.teams = ['golden state warriors']
+    story.summary!.text = 'A report about an ankle injury.'
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: story.title })
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search saved stories' }), '  CURRY   ankle ')
+    expect(screen.getByRole('heading', { name: story.title })).toBeTruthy()
+    expect(screen.getByLabelText('Rank 1').textContent).toBe('01')
+    await userEvent.selectOptions(screen.getByLabelText('Story type'), 'injury')
+    expect(screen.queryByRole('heading', { name: story.title })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Remove story type filter' }))
+    expect(screen.getByRole('heading', { name: story.title })).toBeTruthy()
+    await userEvent.type(screen.getByRole('searchbox'), 'missingword')
+    expect(screen.getByText(/No saved stories match/)).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    expect(screen.getByRole('heading', { name: story.title })).toBeTruthy()
+    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
+  })
+
+  it('searches unranked titles without summaries and restores the search', async () => {
+    const latest = makeLatest()
+    const candidate = { ...latest.briefing!.stories[0], id: 'candidate', title: 'Dončić ankle update', rank: null, summary: null }
+    latest.briefing!.candidates.push(candidate)
+    serve(latest)
+    const view = render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    await userEvent.type(screen.getByRole('searchbox'), 'doncic ankle')
+    expect(screen.getByRole('heading', { name: candidate.title })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Saved NBA game report' })).toBeNull()
+    view.unmount()
+    render(<App />)
+    await screen.findByRole('heading', { name: candidate.title })
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('doncic ankle')
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('')
   })
 
   it('shows the daily schedule and reloads saved news without a collection request', async () => {

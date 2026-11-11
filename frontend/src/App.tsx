@@ -20,8 +20,10 @@ function Dashboard() {
   const schedule = data?.status.schedule
   const automatic = mode === 'live' && Boolean(schedule?.enabled)
   const { filters, setFilters, clearFilters } = useStoryFilters()
-  const filtered = filters.teams.length > 0 || filters.storyType !== 'all'
-  const matchesFilters = (story: Story) => (!filters.teams.length || filters.teams.some(team => story.teams?.includes(team))) && (filters.storyType === 'all' || story.event === filters.storyType)
+  const filtered = filters.teams.length > 0 || filters.storyType !== 'all' || Boolean(filters.query.trim())
+  const normalizeSearch = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+  const searchWords = normalizeSearch(filters.query).trim().split(/\s+/).filter(Boolean)
+  const matchesFilters = (story: Story) => (!filters.teams.length || filters.teams.some(team => story.teams?.includes(team))) && (filters.storyType === 'all' || story.event === filters.storyType) && searchWords.every(word => normalizeSearch(`${story.title} ${story.summary?.text ?? ''}`).includes(word))
   const stories = briefing?.stories.filter(matchesFilters) ?? []
   const nextUpdateMinutes = schedule ? Math.max(0, Math.ceil((Date.parse(schedule.next_update_at) - state.now) / 60000)) : 0
 
@@ -77,7 +79,7 @@ function Dashboard() {
                 {!state.error && !automatic && <button className="secondary-button" disabled={refreshing || loading || state.retrySeconds > 0} onClick={() => void state.refresh()}>{mode === 'sample' ? 'Create sample briefing' : 'Collect the first briefing'}<Icon name="arrow" /></button>}
               </div>
               : <>
-                {filtered && stories.length === 0 && candidates.length === 0 && <div className="empty-ranking"><p>No saved stories match these filters. Try another team or story type.</p><button className="text-button" onClick={clearFilters}>Show all stories</button></div>}
+                {filtered && stories.length === 0 && candidates.length === 0 && <div className="empty-ranking"><p>No saved stories match these filters. Try another keyword, team, or story type.</p><button className="text-button" onClick={clearFilters}>Show all stories</button></div>}
                 {briefing.experimental && <div className="coverage-note"><span className="tag">Provisional</span><p>{mode === 'sample' ? 'Fictional stories run through the same scoring and evidence checks.' : 'This collection is limited. Scores describe the reporting we have, and remain subject to review.'}</p></div>}
                 {briefing.stories.length === 0 && <div className="empty-ranking"><span className="empty-ranking-icon">0</span><div><h3>Not enough independent coverage yet.</h3><p>{candidates.length ? `${plural(candidates.length, 'candidate')} below still ${candidates.length === 1 ? 'needs' : 'need'} more reporting before entering the ranking.` : 'No stories in this collection meet the evidence minimum.'} We show fewer stories when the evidence is limited.</p></div></div>}
                 {stories.map(story => <StoryCard key={`${mode}-${briefing.briefing_id}-${story.id}`} story={story} briefing={briefing} mode={mode} />)}
