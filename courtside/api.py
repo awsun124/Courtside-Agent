@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from .database import database_setting
 from .service import NewsService, PROJECT_ROOT, RefreshError
 from .schedule import run_schedule
 from .llm import ChatProvider
@@ -31,15 +32,16 @@ class SampleInvestigationRequest(BaseModel):
 
 def create_app(database=None, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None, sources_file=None, scheduled=None):
     public_read_only = os.environ.get("COURTSIDE_PUBLIC_READ_ONLY", "false").lower() == "true"
-    database_path = database or os.environ.get("COURTSIDE_DATABASE") or PROJECT_ROOT / "artifacts/courtside.db"
+    database_path = database or database_setting()
     origins = [origin.strip() for origin in os.environ.get("COURTSIDE_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()]
-    automatic = scheduled if scheduled is not None else collector is None and clock is None
+    external_schedule = os.environ.get("COURTSIDE_EXTERNAL_SCHEDULE", "false").lower() == "true"
+    automatic = scheduled if scheduled is not None else collector is None and clock is None and not external_schedule
 
     @asynccontextmanager
     async def lifespan(app):
         app.state.news = NewsService(database_path,
                                      env_file, settings_file, collector, clock, investigation_file, sources_file)
-        app.state.news.daily_schedule = automatic
+        app.state.news.daily_schedule = automatic or external_schedule
         task = asyncio.create_task(run_schedule(app.state.news)) if automatic else None
         try:
             yield

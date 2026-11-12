@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from scripts.validate_gnews import load_api_key, SourceError
+from .database import is_postgres
 from .sources import collect_sources, DEFAULT_SOURCES
 from .feeds import load_sources
 from .free_news import load_key as load_free_news_key, load_settings as load_free_news_settings
@@ -28,7 +29,7 @@ class RefreshError(Exception):
 class NewsService:
     def __init__(self, database, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None, sources_file=None):
         self.daily_schedule = False
-        self.database = Path(database)
+        self.database = str(database) if is_postgres(database) else Path(database)
         self.env_file = Path(env_file or PROJECT_ROOT / ".env")
         self.settings_file = Path(settings_file or PROJECT_ROOT / "config/ranking.json")
         self.custom_collector = collector is not None

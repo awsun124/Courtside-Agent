@@ -2,8 +2,9 @@ import asyncio
 from contextlib import closing
 from datetime import datetime, time, timedelta, timezone
 import logging
-import sqlite3
 from zoneinfo import ZoneInfo
+
+from .database import connect
 
 from .storage import read_briefings
 
@@ -30,9 +31,9 @@ def collect_daily(service):
     if now < due:
         return False
     slot = due.isoformat()
-    with closing(sqlite3.connect(service.database)) as connection, connection:
+    with closing(connect(service.database)) as connection, connection:
         claimed = connection.execute(
-            "INSERT OR IGNORE INTO daily_collections (scheduled_at, status) VALUES (?, 'running')", (slot,)).rowcount
+            "INSERT INTO daily_collections (scheduled_at, status) VALUES (?, 'running') ON CONFLICT DO NOTHING", (slot,)).rowcount
     if not claimed:
         return False
     try:
@@ -43,7 +44,7 @@ def collect_daily(service):
     except Exception:
         status = "failed"
         logger.warning("Daily collection failed. Keeping the previous briefing until the next scheduled edition.")
-    with closing(sqlite3.connect(service.database)) as connection, connection:
+    with closing(connect(service.database)) as connection, connection:
         connection.execute("UPDATE daily_collections SET status=? WHERE scheduled_at=?", (status, slot))
     return True
 

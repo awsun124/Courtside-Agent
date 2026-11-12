@@ -1,59 +1,84 @@
 # Deployment
 
-The frontend is prepared for Vercel. The backend still needs a host with a
-persistent disk and a running Python process for daily collection.
+Use Render Free for FastAPI, Neon for PostgreSQL, and Vercel for the frontend.
+SQLite still works locally when DATABASE_URL is unset. Existing SQLite history
+stays local. The first collection creates the hosted edition.
 
-Vercel Functions do not provide durable local SQLite storage. The current
-background scheduler also cannot be treated as an always-on serverless task.
-Do not connect the entire repository and expect those parts to work unchanged.
+## Database
 
-# Backend
+Neon's pooled DATABASE_URL is for the app and collection job. The direct
+DATABASE_URL_UNPOOLED is only needed for schema setup. Keep both private.
 
-Set these in the host's process environment, using its actual mounted path:
+Run once before starting the backend, with the direct URL in the environment:
+
+```sh
+python -m scripts.migrate_database
+```
+
+Or use your ignored local file:
+
+```sh
+python -m scripts.migrate_database --env-file .env
+```
+
+The versioned schema is additive and safe to run again. Future schema changes
+need explicit migrations. Startup and ordinary requests do not change the
+PostgreSQL schema. Integration tests use disposable schemas on a test branch:
+set COURTSIDE_TEST_DATABASE_URL to its direct URL, then run test discovery.
+
+## Render
+
+- Language: Python 3
+- Branch: main
+- Root Directory: leave blank
+- Build Command: pip install -r requirements.txt
+- Start Command: uvicorn courtside.api:app --host 0.0.0.0 --port $PORT
+- Instance Type: Free
+- Health Check Path: /health
+
+Set these environment variables in Render:
 
 ```env
-COURTSIDE_DATABASE=/data/courtside.db
+DATABASE_URL=your-pooled-Neon-connection-string
 COURTSIDE_ALLOWED_ORIGINS=https://your-site.vercel.app
 COURTSIDE_PUBLIC_READ_ONLY=true
+COURTSIDE_EXTERNAL_SCHEDULE=true
 ENABLE_LLM_CALLS=false
 ENABLE_SAMPLE_AI=false
 ```
 
-These deployment settings are read from the process environment, not .env.
-Provider keys belong only in backend secrets. Start from the repository root:
+Render serves saved results. It needs no news-provider or LLM keys. Free services
+sleep when idle, so the first request can take longer. The database survives
+restarts because it lives in Neon. The /health route checks database access.
 
-```sh
-.venv/bin/python -m uvicorn courtside.api:app --host 0.0.0.0 --port 8000
-```
+## Daily collection
 
-Use the host's port if different. Keep database backups and process restarts
-configured. Public read-only mode blocks visitor-triggered writes, including
-sample generation and AI calls. Internal daily collection still runs. Save a
-sample briefing before enabling read-only mode if you want a sample demo.
+In GitHub Settings > Secrets and variables > Actions, add repository secrets:
+DATABASE_URL (pooled), GNEWS_API_KEY, and FREE_NEWS_API_KEY.
 
-# Vercel frontend
+The Daily collection workflow runs at 6 AM Eastern and can also be started from
+the Actions tab. GitHub may delay scheduled runs and disables public-repository
+schedules after 60 days without activity. Check the workflow occasionally.
+Daily database claims prevent duplicate collection, including manual reruns.
+Failed attempts retain previous results and do not retry providers that day.
+LLM calls are disabled. No credentials are stored in the workflow file.
+
+## Vercel
 
 - Root Directory: frontend
 - Framework: Vite
 - Build Command: npm run build
 - Output Directory: dist
-- VITE_API_BASE_URL: the backend HTTPS origin, without /api
+- VITE_API_BASE_URL: Render's HTTPS origin, without /api
 
-The frontend URL is public configuration. Never put API keys in VITE_ variables.
-Redeploy after changing the API URL. vercel.json handles /stats and /ranking.
-Local development uses Vite's proxy when the API URL is unset.
+Set Render's allowed origin to the final Vercel URL. Redeploy the frontend after
+changing its API URL. Never put secrets in VITE_ variables.
 
-# Before launch
+Before sharing, verify /health, source access from GitHub Actions, the first
+edition, CORS, direct /stats and /ranking links, and results after a Render
+restart. Provider permissions still apply. GNews free access is non-commercial.
+NBA.com and ESPN public endpoints have no supported developer-service contract.
 
-Choose the backend host, confirm provider permissions for a public demo, and
-test provider access from that host. Public NBA.com and ESPN endpoint access is
-not a supported developer-service contract. GNews free access is non-commercial;
-review its terms and publisher restrictions before publishing.
-
-After deployment, check direct page links, CORS, shared stories, daily updates,
-and database survival after restart. Restore a backup once. Local tests cover
-these code paths, but a real cloud deployment has not been verified.
-
-References: [Vercel filesystem](https://vercel.com/docs/functions/runtimes),
-[Vite hosting](https://vercel.com/docs/frameworks/frontend/vite),
-[GNews terms](https://gnews.io/legal/terms-of-service).
+References: [Render Free](https://render.com/docs/free),
+[Neon connections](https://neon.com/docs/connect/connection-pooling),
+[GitHub schedules](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).

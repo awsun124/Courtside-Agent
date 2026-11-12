@@ -1,7 +1,7 @@
 # Architecture
 
 FastAPI collects articles, groups events, calculates scores, and saves briefings
-in SQLite. React reads those snapshots. Opening pages and filtering stories do
+in SQLite locally or PostgreSQL when DATABASE_URL is set. React reads those snapshots. Opening pages and filtering stories do
 not call news or stats providers.
 
 - courtside/sources.py combines GNews, enabled RSS feeds, and FreeNewsApi.ai.

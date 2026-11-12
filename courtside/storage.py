@@ -4,6 +4,8 @@ from pathlib import Path
 import sqlite3
 from datetime import timedelta
 
+from .database import connect, is_postgres
+
 from scripts.validate_gdelt import format_time
 from .stories import parse_date
 
@@ -12,15 +14,13 @@ SCHEMA = Path(__file__).with_name("schema.sql").read_text(encoding="utf-8")
 
 
 def save_run(result, database):
-    database = Path(database)
-    database.parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(database)) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.executescript(SCHEMA)
+    with closing(connect(database)) as connection:
+        if not is_postgres(database):
+            connection.executescript(SCHEMA)
         with connection:
             run_id = connection.execute(
-                "INSERT INTO processing_runs (source, window_start, window_end, input_complete, result_json) VALUES (?, ?, ?, ?, ?)",
-                (result["source"], result["window_start"], result["window_end"], result["input_complete"], json.dumps(result))).lastrowid
+                "INSERT INTO processing_runs (source, window_start, window_end, input_complete, result_json) VALUES (?, ?, ?, ?, ?) RETURNING id",
+                (result["source"], result["window_start"], result["window_end"], result["input_complete"], json.dumps(result))).fetchone()[0]
             article_ids = {}
             for article in result["articles"]:
                 connection.execute(
@@ -37,18 +37,16 @@ def save_run(result, database):
 
 
 def save_briefing(briefing, database):
-    database = Path(database)
-    database.parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(database)) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.executescript(SCHEMA)
+    with closing(connect(database)) as connection:
+        if not is_postgres(database):
+            connection.executescript(SCHEMA)
         run_id = briefing.get("processing_run_id")
         if run_id is not None and connection.execute("SELECT id FROM processing_runs WHERE id = ?", (run_id,)).fetchone() is None:
             raise ValueError("Processing run not found in this database. Process the articles into the same database first.")
         with connection:
             briefing_id = connection.execute(
-                "INSERT INTO briefings (processing_run_id, as_of, experimental, briefing_json) VALUES (?, ?, ?, ?)",
-                (run_id, briefing["as_of"], briefing["experimental"], json.dumps(briefing))).lastrowid
+                "INSERT INTO briefings (processing_run_id, as_of, experimental, briefing_json) VALUES (?, ?, ?, ?) RETURNING id",
+                (run_id, briefing["as_of"], briefing["experimental"], json.dumps(briefing))).fetchone()[0]
             for story in briefing["candidates"]:
                 connection.execute("INSERT INTO story_scores VALUES (?, ?, ?, ?, ?, ?)",
                                    (briefing_id, story["id"], story["rank"], story["score"], story["eligible"], json.dumps(story)))
@@ -61,33 +59,35 @@ def save_briefing(briefing, database):
 
 
 def initialize_database(database):
-    database = Path(database)
-    database.parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(database)) as connection:
+    if is_postgres(database):
+        return
+    with closing(connect(database)) as connection:
         connection.executescript(SCHEMA)
 
 
 def read_briefings(database, mode, limit=10, briefing_id=None):
     query = "SELECT id, briefing_json FROM briefings WHERE COALESCE(json_extract(briefing_json, '$.data_mode'), 'live') = ?"
+    if is_postgres(database):
+        query = query.replace("json_extract(briefing_json, '$.data_mode')", "(briefing_json::jsonb ->> 'data_mode')")
     params = [mode]
     if briefing_id is not None:
         query += " AND id = ?"
         params.append(briefing_id)
     query += " ORDER BY id DESC LIMIT ?"
     params.append(limit)
-    with closing(sqlite3.connect(database)) as connection:
+    with closing(connect(database)) as connection:
         rows = connection.execute(query, params).fetchall()
     return [{**json.loads(payload), "briefing_id": saved_id, "data_mode": mode} for saved_id, payload in rows]
 
 
 def read_run(database, run_id):
-    with closing(sqlite3.connect(database)) as connection:
+    with closing(connect(database)) as connection:
         row = connection.execute("SELECT result_json FROM processing_runs WHERE id = ?", (run_id,)).fetchone()
     return json.loads(row[0]) if row else None
 
 
 def read_refreshes(database, mode, limit=1):
-    with closing(sqlite3.connect(database)) as connection:
+    with closing(connect(database)) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute("SELECT * FROM refresh_attempts WHERE mode = ? ORDER BY id DESC LIMIT ?", (mode, limit)).fetchall()
     return [dict(row) for row in rows]
@@ -95,7 +95,7 @@ def read_refreshes(database, mode, limit=1):
 
 def start_refresh(database, mode, now, requests, max_seconds=90):
     timestamp = format_time(now)
-    with closing(sqlite3.connect(database)) as connection, connection:
+    with closing(connect(database)) as connection, connection:
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("UPDATE refresh_attempts SET status='failed', completed_at=?, error='Previous refresh was interrupted' WHERE status='running' AND lease_until <= ?", (timestamp, timestamp))
         if connection.execute("SELECT id FROM refresh_attempts WHERE status='running'").fetchone():
@@ -107,20 +107,20 @@ def start_refresh(database, mode, now, requests, max_seconds=90):
                 if remaining > 0:
                     return dict(status_code=429, error="Wait 30 minutes between live refreshes", retry_after=max(1, int(remaining) + 1))
         refresh_id = connection.execute(
-            "INSERT INTO refresh_attempts (mode, started_at, lease_until, status, requests_used) VALUES (?, ?, ?, 'running', ?)",
-            (mode, timestamp, format_time(now + timedelta(seconds=max_seconds + 15)), requests)).lastrowid
+            "INSERT INTO refresh_attempts (mode, started_at, lease_until, status, requests_used) VALUES (?, ?, ?, 'running', ?) RETURNING id",
+            (mode, timestamp, format_time(now + timedelta(seconds=max_seconds + 15)), requests)).fetchone()[0]
     return dict(id=refresh_id)
 
 
 def finish_refresh(database, refresh_id, now, status, requests_used, briefing_id=None, error=None):
-    with closing(sqlite3.connect(database)) as connection, connection:
+    with closing(connect(database)) as connection, connection:
         connection.execute("UPDATE refresh_attempts SET completed_at=?, status=?, requests_used=?, briefing_id=?, error=? WHERE id=?",
                            (format_time(now), status, requests_used, briefing_id, error, refresh_id))
 
 
 def start_sample_agent(database, now):
     timestamp = format_time(now)
-    with closing(sqlite3.connect(database)) as connection, connection:
+    with closing(connect(database)) as connection, connection:
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("UPDATE sample_agent_runs SET status='interrupted', completed_at=?, error='Previous run was interrupted' WHERE status='running' AND lease_until <= ?", (timestamp, timestamp))
         running = connection.execute("SELECT id FROM sample_agent_runs WHERE status='running'").fetchone()
@@ -136,11 +136,11 @@ def start_sample_agent(database, now):
         if used + 5 > 15:
             next_day = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
             return dict(status_code=429, error="The daily limit of 15 sample AI requests has been reached", retry_after=max(1, int((next_day - now).total_seconds()) + 1))
-        run_id = connection.execute("INSERT INTO sample_agent_runs (started_at, lease_until, status, requests_used) VALUES (?, ?, 'running', 5)", (timestamp, format_time(now + timedelta(seconds=45)))).lastrowid
+        run_id = connection.execute("INSERT INTO sample_agent_runs (started_at, lease_until, status, requests_used) VALUES (?, ?, 'running', 5) RETURNING id", (timestamp, format_time(now + timedelta(seconds=45)))).fetchone()[0]
     return dict(id=run_id)
 
 
 def finish_sample_agent(database, run_id, now, status, requests_used, result=None, error=None):
-    with closing(sqlite3.connect(database)) as connection, connection:
+    with closing(connect(database)) as connection, connection:
         connection.execute("UPDATE sample_agent_runs SET completed_at=?, status=?, requests_used=?, result_json=?, error=? WHERE id=?",
                            (format_time(now), status, requests_used, json.dumps(result) if result is not None else None, error, run_id))

@@ -27,7 +27,7 @@ npm --prefix frontend run dev
 
 Open http://127.0.0.1:5173. The backend collects news and stats daily at 6 AM
 Eastern while running. If started after 6 AM, it checks whether today's
-collection is needed. Daily attempts are saved in SQLite, including failures.
+collection is needed. Daily attempts are saved in the database, including failures.
 Public news refreshes are disabled in scheduled mode. Reload reads saved data.
 
 The investigator uses rules by default. For optional LLM calls, configure

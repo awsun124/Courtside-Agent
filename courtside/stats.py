@@ -2,9 +2,10 @@ from contextlib import closing
 from datetime import timedelta
 import json
 import math
-import sqlite3
 import subprocess
 from urllib.parse import urlencode
+
+from .database import connect
 
 from .stories import parse_date
 
@@ -126,7 +127,7 @@ def parse_teams(payload, season):
 
 
 def read_stats(database, season, now):
-    with closing(sqlite3.connect(database)) as connection:
+    with closing(connect(database)) as connection:
         row = connection.execute("SELECT snapshot_json FROM stats_snapshots WHERE season=?", (season,)).fetchone()
     result = json.loads(row[0]) if row else dict(season=season, source="NBA.com / ESPN", players=None, teams=None, checked_at=None)
     for kind in ("players", "teams"):
@@ -149,7 +150,7 @@ def save_stats(database, season, now, transport=fetch_stats):
             result[kind] = {**(existing or dict(rows=[], collected_at=None, source_url=url)),
                             "error": "Statistics source unavailable. Showing saved data." if existing and existing.get("rows") else "Statistics source unavailable. No data collected."}
     result["checked_at"] = now.isoformat()
-    with closing(sqlite3.connect(database)) as connection, connection:
+    with closing(connect(database)) as connection, connection:
         connection.execute("INSERT INTO stats_snapshots VALUES (?, ?) ON CONFLICT(season) DO UPDATE SET snapshot_json=excluded.snapshot_json", (season, json.dumps(result)))
     return result
 
@@ -160,8 +161,8 @@ def collect_stats_daily(database, now):
     if now < due:
         return False
     season, slot = season_for(now), due.isoformat()
-    with closing(sqlite3.connect(database)) as connection, connection:
-        claimed = connection.execute("INSERT OR IGNORE INTO stats_collections VALUES (?, ?)", (slot, season)).rowcount
+    with closing(connect(database)) as connection, connection:
+        claimed = connection.execute("INSERT INTO stats_collections VALUES (?, ?) ON CONFLICT DO NOTHING", (slot, season)).rowcount
     if claimed:
         save_stats(database, season, now)
     return bool(claimed)
