@@ -59,6 +59,12 @@ def create_app(database=None, env_file=None, settings_file=None, collector=None,
         read_briefings(request.app.state.news.database, "live", limit=1)
         return {"status": "ok"}
 
+    @app.get("/api/stats")
+    def stats(request: Request):
+        from .stats import read_stats, season_for
+        service = request.app.state.news
+        return read_stats(service.database, season_for(service.clock()), service.clock())
+
     @app.get("/api/briefings/latest")
     def latest(request: Request, mode: DataMode = "live"):
         return request.app.state.news.latest(mode)

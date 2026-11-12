@@ -289,6 +289,13 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.calls, 1)
 
+    async def test_stats_read_does_not_collect_news(self):
+        response = await self.client.get("/api/stats")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["season"], "2026-27")
+        self.assertIsNone(response.json()["players"])
+        self.assertEqual(self.calls, 0)
+
     async def test_shared_briefing_reads_exact_saved_edition_without_collection(self):
         first = (await self.refresh()).json()["briefing"]
         self.now += timedelta(days=1)

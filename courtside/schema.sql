@@ -78,3 +78,11 @@ CREATE TABLE IF NOT EXISTS daily_collections (
     scheduled_at TEXT PRIMARY KEY,
     status TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS stats_snapshots (
+    season TEXT PRIMARY KEY,
+    snapshot_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS stats_collections (
+    scheduled_at TEXT PRIMARY KEY,
+    season TEXT NOT NULL
+);

@@ -55,4 +55,9 @@ async def run_schedule(service):
             await asyncio.to_thread(collect_daily, service)
         except Exception:
             logger.warning("Daily schedule could not access storage. Will check again in one minute.")
+        try:
+            from .stats import collect_stats_daily
+            await asyncio.to_thread(collect_stats_daily, service.database, service.clock())
+        except Exception:
+            logger.warning("Statistics collection could not finish. Saved data remains available.")
         await asyncio.sleep(60)

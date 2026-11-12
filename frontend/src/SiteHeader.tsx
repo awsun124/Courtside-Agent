@@ -2,7 +2,7 @@ export function briefingLink() {
   return new URLSearchParams(window.location.search).get('mode') === 'sample' ? '/?mode=sample' : '/'
 }
 
-export default function SiteHeader({ page, now = Date.now() }: { page: 'briefing' | 'ranking'; now?: number }) {
+export default function SiteHeader({ page, now = Date.now() }: { page: 'briefing' | 'ranking' | 'stats'; now?: number }) {
   const home = briefingLink()
   const ranking = home.includes('?') ? '/ranking?mode=sample' : '/ranking'
   return <header className="site-header"><div className="header-inner">
@@ -12,6 +12,7 @@ export default function SiteHeader({ page, now = Date.now() }: { page: 'briefing
     </a>
     <nav aria-label="Main navigation">
       <a href={page === 'briefing' ? '#briefing' : `${home}#briefing`} className={page === 'briefing' ? 'active' : undefined} aria-current={page === 'briefing' ? 'page' : undefined}>NBA briefing</a>
+      <a href="/stats" className={page === 'stats' ? 'active' : undefined} aria-current={page === 'stats' ? 'page' : undefined}>Stats</a>
       <a href={ranking} className={page === 'ranking' ? 'active' : undefined} aria-current={page === 'ranking' ? 'page' : undefined}>How we rank</a>
     </nav>
     <span className="header-date">{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(now)}</span>
