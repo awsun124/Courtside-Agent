@@ -330,16 +330,15 @@ describe('Court Side dashboard', () => {
     expect(fetchMock.mock.calls).toHaveLength(1)
   })
 
-  it('keeps public sample viewing read only', async () => {
+  it('ignores the sample briefing URL and stays in live mode', async () => {
     const latest = makeLatest('sample')
-    latest.status.public_read_only = true
     window.history.replaceState(null, '', '/?mode=sample')
     serve(latest)
     render(<App />)
-    await screen.findByRole('heading', { name: 'Sample: Lakers win a fictional game' })
-    expect((screen.getByRole('button', { name: 'Refresh briefing' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByText(/Generating new samples and running AI demos are disabled/)).toBeTruthy()
-    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    expect(screen.queryByRole('button', { name: 'Sample' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Refresh briefing' })).toBeTruthy()
+    expect(fetchMock.mock.calls.some(([path]) => String(path).includes('mode=sample'))).toBe(false)
   })
 
   it('does not silently switch to sample data when the API is down', async () => {
@@ -347,47 +346,8 @@ describe('Court Side dashboard', () => {
     render(<App />)
     await screen.findByRole('alert')
     expect(screen.queryByText('Sample data')).toBeNull()
-    expect(screen.getByRole('button', { name: 'News' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Refresh briefing' }).getAttribute('aria-pressed')).toBeNull()
     expect(screen.getByText('The briefing is unavailable.')).toBeTruthy()
-  })
-
-  it('labels explicitly selected sample data and keeps requests in that mode', async () => {
-    serve()
-    render(<App />)
-    await screen.findByRole('heading', { name: 'Saved NBA game report' })
-    await userEvent.click(screen.getByRole('button', { name: 'Sample' }))
-    await screen.findByRole('heading', { name: 'Sample: Lakers win a fictional game' })
-    expect(screen.getByText('Sample data')).toBeTruthy()
-    expect(screen.getByText(/These stories and publishers are fictional/)).toBeTruthy()
-    expect(window.location.search).toBe('?mode=sample')
-    expect(fetchMock.mock.calls.some(([path]) => String(path).includes('mode=sample'))).toBe(true)
-  })
-
-  it('runs the sample investigation only after its separate button is clicked', async () => {
-    serve()
-    const defaults = fetchMock.getMockImplementation()!
-    const target = makeLatest('sample').briefing!.stories[0]
-    target.title = 'Sample: Lakers give Marcus Reed ankle injury update'
-    fetchMock.mockImplementation((input, options) => {
-      if (String(input) === '/api/sample/investigate') return Promise.resolve(json({
-        data_mode: 'sample', model: 'qwen-test', passed: true, checks: { scores_unchanged: true },
-        optional_checks: {}, note: 'Fictional evidence only.', target,
-      }))
-      return defaults(input, options)
-    })
-    render(<App />)
-    await screen.findByRole('heading', { name: 'Saved NBA game report' })
-    expect(screen.queryByRole('button', { name: 'Run sample investigation' })).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'Sample' }))
-    await screen.findByRole('heading', { name: 'Sample: Lakers win a fictional game' })
-    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
-    await userEvent.click(screen.getByRole('button', { name: 'Run sample investigation' }))
-    await screen.findByRole('heading', { name: 'Sample: Lakers give Marcus Reed ankle injury update' })
-    expect(screen.getByText(/qwen-test · checks passed/)).toBeTruthy()
-    expect(screen.getByText(/Fictional evidence only/)).toBeTruthy()
-    const aiCalls = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/sample/investigate')
-    expect(aiCalls).toHaveLength(1)
-    expect(JSON.parse(String(aiCalls[0][1]?.body))).toEqual({})
   })
 
   it('shows candidates without inventing a rank when evidence is limited', async () => {
@@ -551,20 +511,6 @@ describe('Court Side dashboard', () => {
     await screen.findByText('This briefing is getting old.')
     expect(screen.getByText('The last refresh did not finish.')).toBeTruthy()
     expect(screen.getByText('Showing the last saved briefing.')).toBeTruthy()
-  })
-
-  it('discards a slow response from the previously selected mode', async () => {
-    let resolveLive!: (response: Response) => void
-    const delayed = new Promise<Response>(resolve => { resolveLive = resolve })
-    serve()
-    const defaults = fetchMock.getMockImplementation()!
-    fetchMock.mockImplementation((input, options) => String(input).includes('/latest?mode=live') ? delayed : defaults(input, options))
-    render(<App />)
-    await userEvent.click(screen.getByRole('button', { name: 'Sample' }))
-    await screen.findByRole('heading', { name: 'Sample: Lakers win a fictional game' })
-    resolveLive(json(makeLatest('live')))
-    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Saved NBA game report' })).toBeNull())
-    expect(screen.getByText('Sample data')).toBeTruthy()
   })
 
   it('renders external article text as text and blocks unsafe source links', async () => {

@@ -7,9 +7,8 @@ export default function CollectionActivity({ briefing }: { briefing: Briefing })
     <summary>Collection activity<Icon name="chevron" /></summary>
     <div className="details-body">
       <p>Saved collection: {formatDate(briefing.as_of, true)}. This activity belongs to this briefing.</p>
-      {briefing.data_mode === 'sample' ? <p>Sample mode makes no external news requests.</p>
-        : !briefing.collection_activity?.length ? <p>No search activity was recorded for this older briefing. Refresh to record it.</p>
-          : <>
+      {!briefing.collection_activity?.length ? <p>No search activity was recorded for this older briefing. Refresh to record it.</p>
+        : <>
             <ol className="history-list collection-activity">{briefing.collection_activity.map((entry, index) => {
               const label = entry.purpose === 'feed' ? 'Feed snapshot' : entry.purpose === 'discovery' ? 'Discovery search'
                 : entry.topic === 'injury' ? 'Injury search' : entry.topic === 'game' ? 'Game search' : 'Targeted search'

@@ -28,9 +28,9 @@ it('explains evidence requirements, scoring, sparse coverage, and source limits'
   expect(screen.getByText(/These are the default settings/)).toBeTruthy()
 })
 
-it('preserves sample mode when navigating back to the briefing', () => {
-  window.history.replaceState(null, '', '/ranking?mode=sample')
+it('keeps the briefing navigation on the live dashboard', () => {
+  window.history.replaceState(null, '', '/ranking')
   render(<App />)
-  expect(screen.getByRole('link', { name: 'Court Side home' }).getAttribute('href')).toBe('/?mode=sample')
-  expect(screen.getByRole('link', { name: 'Back to the NBA briefing' }).getAttribute('href')).toBe('/?mode=sample')
+  expect(screen.getByRole('link', { name: 'Court Side home' }).getAttribute('href')).toBe('/')
+  expect(screen.getByRole('link', { name: 'Back to the NBA briefing' }).getAttribute('href')).toBe('/')
 })

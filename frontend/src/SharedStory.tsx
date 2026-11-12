@@ -11,7 +11,7 @@ export default function SharedStory() {
   const [error, setError] = useState('')
   const reader = useReading()
   const params = new URLSearchParams(window.location.search)
-  const mode: DataMode = params.get('mode') === 'sample' ? 'sample' : 'live'
+  const mode: DataMode = 'live'
   const storyId = params.get('story') ?? ''
   const briefingId = params.get('briefing_id') ?? ''
   useEffect(() => {
@@ -31,9 +31,8 @@ export default function SharedStory() {
   return <>
     <SiteHeader page="briefing" now={Date.now()} />
     <main className="page-shell shared-story">
-      <a href={mode === 'sample' ? '/?mode=sample' : '/'}>Back to the latest briefing</a>
+      <a href="/">Back to the latest briefing</a>
       <h1>Saved story</h1>
-      {mode === 'sample' && <p className="notice">Sample data. This story is fictional.</p>}
       <label className="reading-toggle"><input type="checkbox" checked={reader.reading.hideSpoilers} onChange={event => reader.setSpoilers(event.target.checked)} />Hide game spoilers</label>
       {reader.storageError && <p role="status">Browser storage is unavailable. Reading choices will last only for this visit.</p>}
       {error ? <p role="alert">{error}</p> : story && briefing ? <>

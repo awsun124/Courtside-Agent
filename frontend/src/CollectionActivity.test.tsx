@@ -50,9 +50,9 @@ it('explains skipped searches and does not invent details for older briefings', 
   expect(screen.queryByText(/0 results returned/)).toBeNull()
 })
 
-it('labels sample activity as making no external requests', async () => {
-  render(<CollectionActivity briefing={makeLatest('sample').briefing!} />)
+it('shows a concise note when no collection activity was logged', async () => {
+  render(<CollectionActivity briefing={makeLatest().briefing!} />)
   await userEvent.click(screen.getByText('Collection activity'))
-  expect(screen.getByText('Sample mode makes no external news requests.')).toBeTruthy()
+  expect(screen.getByText(/No search activity was recorded/)).toBeTruthy()
   expect(within(screen.getByText('Collection activity').closest('details')!).queryByText(/Search:/)).toBeNull()
 })

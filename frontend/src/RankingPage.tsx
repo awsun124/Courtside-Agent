@@ -81,7 +81,7 @@ export default function RankingPage() {
         <h2 id="ranking-limits">A view of our sources.</h2>
         <p>API searches have request limits, feeds are recent snapshots, and some sources arrive late. GNews free access excludes the latest 12 hours. Momentum uses the available window, which may end before the time you refresh.</p>
         <p>Event grouping and copy detection can make mistakes. A parsed injury availability change does not automatically qualify as a reviewed development or earn freshness points.</p>
-        <p>The briefing marks partial collection, failed sources, and stale data. Sample mode is explicitly fictional. The result is always the most-covered stories among our monitored sources.</p>
+        <p>The briefing marks partial collection, failed sources, and stale data. The result is always the most-covered stories among our monitored sources.</p>
         <a className="secondary-button ranking-back" href={briefingLink()}>Back to the NBA briefing</a>
       </section>
       <footer className="site-footer"><div><strong>COURT SIDE.</strong><p>The reporting behind the order.</p></div><a href="https://github.com/awsun124/Courtside-Agent/blob/main/docs/ranking.md" target="_blank" rel="noopener noreferrer">Technical methodology</a></footer>

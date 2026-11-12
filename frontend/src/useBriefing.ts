@@ -4,7 +4,7 @@ import { windowDays } from './format'
 import type { DataMode, HistoryItem, HistoryResponse, LatestResponse } from './types'
 
 export function useBriefing() {
-  const [mode, setMode] = useState<DataMode>(() => new URLSearchParams(window.location.search).get('mode') === 'sample' ? 'sample' : 'live')
+  const [mode, setMode] = useState<DataMode>('live')
   const [data, setData] = useState<LatestResponse | null>(null)
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [days, setDays] = useState(7)
@@ -69,7 +69,7 @@ export function useBriefing() {
   }, [serverRunning, mode, load])
 
   function changeMode(next: DataMode) {
-    if (next === mode || refreshing) return
+    if (next !== 'live' || next === mode || refreshing) return
     readController.current?.abort()
     currentMode.current = next
     setData(null)
@@ -80,8 +80,7 @@ export function useBriefing() {
     setLoading(true)
     setMode(next)
     const url = new URL(window.location.href)
-    if (next === 'sample') url.searchParams.set('mode', 'sample')
-    else url.searchParams.delete('mode')
+    url.searchParams.delete('mode')
     window.history.replaceState(null, '', url)
   }
 
