@@ -130,6 +130,7 @@ export interface RefreshAttempt {
 export interface LatestResponse {
   briefing: Briefing | null
   status: {
+    public_read_only?: boolean
     schedule?: { enabled: boolean; timezone: string; hour: number; next_update_at: string } | null
     state: 'empty' | 'ready' | 'stale'
     data_mode: DataMode

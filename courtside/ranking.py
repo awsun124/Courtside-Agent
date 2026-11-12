@@ -1,4 +1,3 @@
-"""Score story groups with configurable coverage, momentum, and freshness rules."""
 from __future__ import annotations
 
 import argparse

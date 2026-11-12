@@ -330,6 +330,18 @@ describe('Court Side dashboard', () => {
     expect(fetchMock.mock.calls).toHaveLength(1)
   })
 
+  it('keeps public sample viewing read only', async () => {
+    const latest = makeLatest('sample')
+    latest.status.public_read_only = true
+    window.history.replaceState(null, '', '/?mode=sample')
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Sample: Lakers win a fictional game' })
+    expect((screen.getByRole('button', { name: 'Refresh briefing' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/Generating new samples and running AI demos are disabled/)).toBeTruthy()
+    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
+  })
+
   it('does not silently switch to sample data when the API is down', async () => {
     fetchMock.mockRejectedValue(new Error('Offline'))
     render(<App />)

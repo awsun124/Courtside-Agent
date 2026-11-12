@@ -1,4 +1,3 @@
-"""Build clearly labeled fictional articles for trying the app without services."""
 from datetime import timedelta
 
 from scripts.validate_gdelt import format_time

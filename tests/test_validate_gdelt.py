@@ -1,4 +1,3 @@
-"""Offline tests: no requests, keys, or sleeps."""
 from argparse import Namespace
 import csv
 from datetime import datetime, timedelta

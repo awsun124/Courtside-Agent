@@ -1,56 +1,59 @@
-# Deployment notes
+# Deployment
 
-Checked November 11, 2026. No public deployment or paid services were created.
+The frontend is prepared for Vercel. The backend still needs a host with a
+persistent disk and a running Python process for daily collection.
 
-## What this app needs
+Vercel Functions do not provide durable local SQLite storage. The current
+background scheduler also cannot be treated as an always-on serverless task.
+Do not connect the entire repository and expect those parts to work unchanged.
 
-A Python process for FastAPI and the daily scheduler, a persistent SQLite file,
-and a React build served either separately or through the backend. Provider
-keys belong in the hosting service's server-side secrets. Preserve the database
-across deployments so story links, history, and daily collection claims survive.
-The current server expects its database at artifacts/courtside.db.
+# Backend
 
-## Hosting findings
+Set these in the host's process environment, using its actual mounted path:
 
-[Render Free](https://render.com/docs/free) sleeps after 15 minutes without
-traffic and loses local filesystem changes on restart, redeploy, or spin-down.
-It cannot attach a persistent disk. It is therefore unsuitable for this app's
-current SQLite history and in-process schedule without architecture changes.
-Render's free Postgres also expires after 30 days.
+```env
+COURTSIDE_DATABASE=/data/courtside.db
+COURTSIDE_ALLOWED_ORIGINS=https://your-site.vercel.app
+COURTSIDE_PUBLIC_READ_ONLY=true
+ENABLE_LLM_CALLS=false
+ENABLE_SAMPLE_AI=false
+```
 
-[Oracle Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)
-include compute and block storage. A suitable available VM could run the current
-Python process with SQLite on persistent storage, making it a free candidate to
-investigate. Availability and account eligibility must be checked before choosing
-it. Oracle may reclaim idle compute. This path also requires configuring Linux,
-HTTPS, process restarts, and database backups. Do not select paid resources or
-upgrade an account without approval.
+These deployment settings are read from the process environment, not .env.
+Provider keys belong only in backend secrets. Start from the repository root:
 
-A managed Python service with a paid persistent disk is another path if a small
-hosting budget is later approved. No paid plan has been selected.
+```sh
+.venv/bin/python -m uvicorn courtside.api:app --host 0.0.0.0 --port 8000
+```
 
-## Source use
+Use the host's port if different. Keep database backups and process restarts
+configured. Public read-only mode blocks visitor-triggered writes, including
+sample generation and AI calls. Internal daily collection still runs. Save a
+sample briefing before enabling read-only mode if you want a sample demo.
 
-[GNews terms](https://gnews.io/legal/terms-of-service) limit unpaid access to
-personal, academic, evaluation, and other non-commercial uses. Do not assume
-that a public or resume-related deployment is automatically covered. Confirm
-how the intended demo fits those terms before enabling it publicly. Retain source
-attribution and review the data-use conditions separately from request quotas.
+# Vercel frontend
 
-[FreeNewsApi.ai terms](https://freenewsapi.ai/legal/terms) allow storing and
-processing API data and commercial API use within plan limits. They require
-linking to original articles and do not license publisher text. Keep the existing
-headline-only handling for this source. Its API permission is not blanket
-permission to reproduce full publisher articles.
+- Root Directory: frontend
+- Framework: Vite
+- Build Command: npm run build
+- Output Directory: dist
+- VITE_API_BASE_URL: the backend HTTPS origin, without /api
 
-RSS discovery also does not imply permission to reproduce article text. Review
-the enabled publisher's feed-use conditions before public deployment. This
-research does not certify every source or publisher for public use.
+The frontend URL is public configuration. Never put API keys in VITE_ variables.
+Redeploy after changing the API URL. vercel.json handles /stats and /ranking.
+Local development uses Vite's proxy when the API URL is unset.
 
-## Next implementation step
+# Before launch
 
-Choose the hosting path before adding provider-specific deployment files. For a
-free deployment retaining SQLite, first verify access to a suitable VM. Then
-prepare the React build, HTTPS routing, process management, persistent database
-location, and backups. Test collection and shared-story links after a restart.
-Do not publish a site until the user approves the concrete deployment.
+Choose the backend host, confirm provider permissions for a public demo, and
+test provider access from that host. Public NBA.com and ESPN endpoint access is
+not a supported developer-service contract. GNews free access is non-commercial;
+review its terms and publisher restrictions before publishing.
+
+After deployment, check direct page links, CORS, shared stories, daily updates,
+and database survival after restart. Restore a backup once. Local tests cover
+these code paths, but a real cloud deployment has not been verified.
+
+References: [Vercel filesystem](https://vercel.com/docs/functions/runtimes),
+[Vite hosting](https://vercel.com/docs/frameworks/frontend/vite),
+[GNews terms](https://gnews.io/legal/terms-of-service).

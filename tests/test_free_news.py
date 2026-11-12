@@ -1,4 +1,3 @@
-"""Check source attribution, limits, date handling, and isolated API failures."""
 from argparse import Namespace
 from datetime import datetime, timedelta, timezone
 import json

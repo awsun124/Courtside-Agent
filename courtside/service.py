@@ -1,4 +1,3 @@
-"""Connect news collection, story processing, ranking, and saved briefings."""
 from argparse import Namespace
 from datetime import datetime, timezone
 import json

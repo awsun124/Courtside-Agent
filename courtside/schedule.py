@@ -1,4 +1,3 @@
-"""Collect one shared daily edition at 6 AM Eastern."""
 import asyncio
 from contextlib import closing
 from datetime import datetime, time, timedelta, timezone

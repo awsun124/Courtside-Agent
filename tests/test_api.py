@@ -1,4 +1,3 @@
-"""Check API reads, refresh limits, sample mode, and source failures offline."""
 from contextlib import closing
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -288,6 +287,21 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         response = await self.refresh()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.calls, 1)
+
+    async def test_public_backend_configuration_preserves_reads_and_blocks_writes(self):
+        with patch.dict("os.environ", {"COURTSIDE_PUBLIC_READ_ONLY": "true", "COURTSIDE_ALLOWED_ORIGINS": "https://courtside.example.com", "COURTSIDE_DATABASE": str(self.database)}):
+            app = create_app(env_file=self.env_file, collector=self.collect, clock=lambda: self.now)
+        async with app.router.lifespan_context(app):
+            self.assertEqual(app.state.news.database, self.database)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
+                latest = await client.get("/api/briefings/latest", headers={"Origin": "https://courtside.example.com"})
+                self.assertTrue(latest.json()["status"]["public_read_only"])
+                self.assertEqual(latest.headers["Access-Control-Allow-Origin"], "https://courtside.example.com")
+                other = await client.get("/api/stats", headers={"Origin": "https://other.example.com"})
+                self.assertNotIn("Access-Control-Allow-Origin", other.headers)
+                for path, body in [("/api/refresh", {"mode": "sample"}), ("/api/refresh", {"mode": "live"}), ("/api/sample/investigate", {})]:
+                    self.assertEqual((await client.post(path, json=body)).status_code, 403)
+        self.assertEqual(self.calls, 0)
 
     async def test_stats_read_does_not_collect_news(self):
         response = await self.client.get("/api/stats")

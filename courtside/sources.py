@@ -1,4 +1,3 @@
-"""Combine API discovery and reviewed feeds without counting duplicate URLs twice."""
 from argparse import Namespace
 from datetime import timedelta
 from pathlib import Path

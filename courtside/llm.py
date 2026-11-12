@@ -1,4 +1,3 @@
-"""Optional tool-calling provider that stays disabled until explicitly enabled."""
 import json
 import os
 from pathlib import Path

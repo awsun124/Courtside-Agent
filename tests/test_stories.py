@@ -1,4 +1,3 @@
-"""Check article filtering, event grouping, and SQLite history."""
 from contextlib import closing
 from copy import deepcopy
 from pathlib import Path

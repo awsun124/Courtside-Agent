@@ -1,4 +1,3 @@
-"""Check ranking scores, evidence requirements, and saved briefing history."""
 from contextlib import closing
 from copy import deepcopy
 import math

@@ -1,4 +1,3 @@
-"""Collect dated headlines from a small, reviewed catalog of public feeds."""
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape

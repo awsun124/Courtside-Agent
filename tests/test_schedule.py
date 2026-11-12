@@ -1,4 +1,3 @@
-"""Check daily collection timing and shared persistence without network calls."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path

@@ -1,4 +1,3 @@
-"""Check feed boundaries, attribution, and source failures without network access."""
 from argparse import Namespace
 from datetime import datetime, timedelta, timezone
 import json

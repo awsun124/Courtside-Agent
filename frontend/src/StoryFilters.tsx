@@ -19,7 +19,7 @@ function savedFilters(): Filters {
 export function useStoryFilters() {
   const [filters, setFilters] = useState<Filters>(savedFilters)
   useEffect(() => {
-    try { localStorage.setItem(storageKey, JSON.stringify(filters)) } catch { /* Filtering still works when browser storage is unavailable. */ }
+    try { localStorage.setItem(storageKey, JSON.stringify(filters)) } catch {}
   }, [filters])
   return { filters, setFilters, clearFilters: () => setFilters({ teams: [], storyType: 'all', query: '' }) }
 }

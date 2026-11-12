@@ -1,6 +1,6 @@
-"""Local API for saved NBA briefings and bounded manual refreshes."""
 from contextlib import asynccontextmanager, suppress
 import asyncio
+import os
 import sqlite3
 from typing import Literal
 
@@ -30,11 +30,14 @@ class SampleInvestigationRequest(BaseModel):
 
 
 def create_app(database=None, env_file=None, settings_file=None, collector=None, clock=None, investigation_file=None, sources_file=None, scheduled=None):
+    public_read_only = os.environ.get("COURTSIDE_PUBLIC_READ_ONLY", "false").lower() == "true"
+    database_path = database or os.environ.get("COURTSIDE_DATABASE") or PROJECT_ROOT / "artifacts/courtside.db"
+    origins = [origin.strip() for origin in os.environ.get("COURTSIDE_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()]
     automatic = scheduled if scheduled is not None else collector is None and clock is None
 
     @asynccontextmanager
     async def lifespan(app):
-        app.state.news = NewsService(database or PROJECT_ROOT / "artifacts/courtside.db",
+        app.state.news = NewsService(database_path,
                                      env_file, settings_file, collector, clock, investigation_file, sources_file)
         app.state.news.daily_schedule = automatic
         task = asyncio.create_task(run_schedule(app.state.news)) if automatic else None
@@ -47,8 +50,14 @@ def create_app(database=None, env_file=None, settings_file=None, collector=None,
                     await task
 
     app = FastAPI(title="Court Side", version="0.1.0", lifespan=lifespan)
-    app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    app.add_middleware(CORSMiddleware, allow_origins=origins,
                        allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
+
+    @app.middleware("http")
+    async def protect_public_writes(request: Request, call_next):
+        if public_read_only and request.method not in {"GET", "HEAD", "OPTIONS"}:
+            return JSONResponse(status_code=403, content={"detail": "This demo serves saved results only. Collection runs on the server's daily schedule."})
+        return await call_next(request)
 
     @app.exception_handler(sqlite3.Error)
     async def database_error(request: Request, error):
@@ -67,7 +76,9 @@ def create_app(database=None, env_file=None, settings_file=None, collector=None,
 
     @app.get("/api/briefings/latest")
     def latest(request: Request, mode: DataMode = "live"):
-        return request.app.state.news.latest(mode)
+        result = request.app.state.news.latest(mode)
+        result["status"]["public_read_only"] = public_read_only
+        return result
 
     @app.get("/api/briefings")
     def history(request: Request, mode: DataMode = "live", limit: int = Query(default=10, ge=1, le=50)):

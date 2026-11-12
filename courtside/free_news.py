@@ -1,4 +1,3 @@
-"""Collect attributed headlines from FreeNewsApi.ai with fixed request limits."""
 from collections import Counter
 from datetime import datetime, timezone
 from html import unescape

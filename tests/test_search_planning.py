@@ -1,4 +1,3 @@
-"""Check search diversity, cooldowns, and the shared request budget."""
 from argparse import Namespace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

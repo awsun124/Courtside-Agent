@@ -1,4 +1,3 @@
-"""Filter saved articles and group likely reports about the same event."""
 from __future__ import annotations
 
 import argparse

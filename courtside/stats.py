@@ -1,4 +1,3 @@
-"""Collect bounded NBA statistics snapshots separately from news rankings."""
 from contextlib import closing
 from datetime import timedelta
 import json

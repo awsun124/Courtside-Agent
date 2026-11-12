@@ -1,4 +1,3 @@
-"""Check NBA statistics parsing, caching, and failure isolation offline."""
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

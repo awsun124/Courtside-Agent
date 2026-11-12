@@ -1,4 +1,3 @@
-"""Check GNews's NBA coverage using a private local API key."""
 from __future__ import annotations
 
 import argparse

@@ -1,4 +1,3 @@
-"""Offline tests for GNews collection and private key handling."""
 from argparse import Namespace
 from contextlib import redirect_stdout
 from datetime import datetime, timedelta

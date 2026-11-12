@@ -1,4 +1,3 @@
-"""Check bounded tools, evidence citations, provider gating, and unchanged scores."""
 from copy import deepcopy
 from datetime import datetime, timezone
 import json

@@ -1,4 +1,3 @@
-"""Check GDELT's NBA coverage with a limit on requests and running time."""
 from __future__ import annotations
 
 import argparse
@@ -262,7 +261,7 @@ def save_report(report, output):
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
         for row in report["articles"]:
-            # Guard spreadsheet users against formulas in untrusted headline text.
+            # Prevent spreadsheet formulas in exported headlines.
             writer.writerow({k: "'" + v if isinstance(v, str) and v.lstrip().startswith(("=", "+", "-", "@")) else v for k, v in row.items()})
 
 

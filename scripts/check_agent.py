@@ -1,4 +1,3 @@
-"""Check investigation tools on fictional injury coverage and a separate trade rumor."""
 import argparse
 from copy import deepcopy
 from datetime import datetime, timezone

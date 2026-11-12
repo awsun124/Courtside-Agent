@@ -25,6 +25,7 @@ function Dashboard() {
   const [unreadOnly, setUnreadOnly] = useState(false)
   const { data, mode, loading, refreshing, days } = state
   const briefing = data?.briefing
+  const readOnly = data?.status.public_read_only
   const schedule = data?.status.schedule
   const automatic = mode === 'live' && Boolean(schedule?.enabled)
   const { filters, setFilters, clearFilters } = useStoryFilters()
@@ -67,7 +68,7 @@ function Dashboard() {
       <section className="toolbar" aria-label="Briefing controls">
         {automatic ? <div className="window-control"><span className="control-label">Coverage window</span><span>Past {actualDays ?? 7} days · Daily edition</span></div> : <div className="window-control"><span className="control-label">Coverage window</span><div className="segmented" aria-label="Coverage window">{[1, 3, 7].map(value => <button key={value} aria-pressed={days === value} disabled={refreshing || loading} onClick={() => state.setDays(value)}>{value} {value === 1 ? 'day' : 'days'}</button>)}</div></div>}
         <div className="toolbar-actions"><div className="mode-control" aria-label="Data mode"><button aria-pressed={mode === 'live'} disabled={refreshing} onClick={() => state.changeMode('live')}>News</button><button aria-pressed={mode === 'sample'} disabled={refreshing} onClick={() => state.changeMode('sample')}>Sample</button></div>
-          {automatic ? <button className="refresh-button" disabled={loading} onClick={state.reload}><Icon name="refresh" />Reload briefing</button> : <button className="refresh-button" disabled={refreshing || loading || state.retrySeconds > 0} onClick={() => void state.refresh()}><Icon name="refresh" className={refreshing ? 'spinning' : ''} />{refreshLabel}</button>}
+          {automatic ? <button className="refresh-button" disabled={loading} onClick={state.reload}><Icon name="refresh" />Reload briefing</button> : <button className="refresh-button" disabled={readOnly || refreshing || loading || state.retrySeconds > 0} onClick={() => void state.refresh()}><Icon name="refresh" className={refreshing ? 'spinning' : ''} />{refreshLabel}</button>}
         </div>
       </section>
 
@@ -91,7 +92,8 @@ function Dashboard() {
       </section>
       {reader.storageError && <p className="notice" role="status">Browser storage is unavailable. Bookmarks and reading choices will last only for this visit.</p>}
 
-      <SampleInvestigation active={mode === 'sample'} />
+      {readOnly && mode === 'sample' && <p className="notice">This demo shows saved sample briefings. Generating new samples and running AI demos are disabled on this public server.</p>}
+      <SampleInvestigation active={mode === 'sample' && !readOnly} />
 
       <div className="dashboard-layout">
         <section id="briefing" className="news-column" aria-label="NBA briefing" aria-busy={loading || refreshing}>
@@ -103,7 +105,7 @@ function Dashboard() {
             {bookmarks.map(entry => <div key={`${entry.mode}-${entry.story.id}`}><p className="bookmark-edition">Saved edition · {formatDate(entry.briefing.as_of, true)}</p><StoryCard story={entry.story} briefing={entry.briefing} mode={entry.mode} reader={reader} /></div>)}
           </> : loading && !briefing ? <div className="loading-state" role="status"><div className="loading-line" /><h3>Loading the saved briefing…</h3><p>Getting the stories and source details.</p></div>
             : !briefing ? <div className="empty-state"><span className="empty-number">00</span><h3>{state.error ? 'The briefing is unavailable.' : 'The first briefing starts here.'}</h3><p>{state.error ? 'Your saved news will appear when the API is available again.' : mode === 'sample' ? 'Create a sample briefing to explore the layout with fictional news.' : automatic ? 'News is collected daily at 6 AM Eastern while the server is running. You can also try the sample edition.' : 'Refresh to collect recent NBA coverage. You can also try the clearly labeled sample edition.'}</p>
-                {!state.error && !automatic && <button className="secondary-button" disabled={refreshing || loading || state.retrySeconds > 0} onClick={() => void state.refresh()}>{mode === 'sample' ? 'Create sample briefing' : 'Collect the first briefing'}<Icon name="arrow" /></button>}
+                {!state.error && !automatic && <button className="secondary-button" disabled={readOnly || refreshing || loading || state.retrySeconds > 0} onClick={() => void state.refresh()}>{mode === 'sample' ? 'Create sample briefing' : 'Collect the first briefing'}<Icon name="arrow" /></button>}
               </div>
               : <>
                 {filtered && stories.length === 0 && candidates.length === 0 && <div className="empty-ranking"><p>No saved stories match these filters. Some teams have no coverage in this edition. Clear search, team, story type, and unread filters to see all saved stories.</p><button className="text-button" onClick={() => { clearFilters(); setUnreadOnly(false) }}>Show all stories</button></div>}

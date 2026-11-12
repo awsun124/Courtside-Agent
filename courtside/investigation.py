@@ -1,4 +1,3 @@
-"""Investigate saved evidence with a bounded sequence of read-only tools."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass

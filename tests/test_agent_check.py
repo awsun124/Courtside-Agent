@@ -1,4 +1,3 @@
-"""Check the small agent evaluation without external services."""
 from copy import deepcopy
 from pathlib import Path
 import tempfile

@@ -1,9 +1,11 @@
 # Court Side
 
-Court Side is an NBA news dashboard that groups related articles and ranks up to 10 distinct stories from the past seven days. News updates daily at 6 AM Eastern while the server is running. Filter saved stories by team or story type.
+An NBA news briefing and stats dashboard. Groups coverage into distinct stories,
+ranks up to ten, and shows player leaders and team records. Updates daily at
+6 AM Eastern while the server is running. Sample mode works without news keys.
 
-Each story includes source links, publisher details, a score breakdown, and investigation activity. Rankings reflect coverage among monitored sources. A clearly labeled sample mode lets you try the app without an API key.
+Built with React, TypeScript, FastAPI, and SQLite.
 
-Built with React, TypeScript, Python, FastAPI, and SQLite.
+[Setup](docs/setup.md) · [Architecture](docs/architecture.md) · [Ranking](docs/ranking.md) · [Deployment](docs/deployment.md)
 
-**Live demo:** Coming soon.
+Live demo: coming soon.

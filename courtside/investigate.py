@@ -1,4 +1,3 @@
-"""Run bounded investigations against saved briefings without refreshing news."""
 import argparse
 import json
 from pathlib import Path

@@ -1,4 +1,3 @@
-"""Keep articles, story groups, and processing history in SQLite."""
 import json
 from contextlib import closing
 from pathlib import Path
