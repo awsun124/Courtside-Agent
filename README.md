@@ -8,8 +8,4 @@ Built with React, TypeScript, FastAPI, and SQLite.
 
 [Setup](docs/setup.md) · [Architecture](docs/architecture.md) · [Ranking](docs/ranking.md) · [Deployment](docs/deployment.md)
 
-<<<<<<< HEAD
-courtside-agent.vercel.app
-=======
-Live demo: [Open the app](https://courtside-agent.vercel.app)
->>>>>>> 87a0038 (Update README demo link)
+Deployed app: [courtside-agent.vercel.app](https://courtside-agent.vercel.app)
