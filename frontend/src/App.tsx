@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Analytics } from '@vercel/analytics/react'
 import type { Story } from './types'
 import { matchesSearch } from './search'
 import { formatDate, plural, timeAgo, windowDays } from './format'
@@ -15,7 +16,12 @@ import CollectionActivity from './CollectionActivity'
 import StoryFilters, { useStoryFilters } from './StoryFilters'
 
 export default function App() {
-  return window.location.pathname.replace(/\/$/, '') === '/stats' ? <StatsPage /> : window.location.pathname.replace(/\/$/, '') === '/ranking' ? <RankingPage /> : new URLSearchParams(window.location.search).has('story') ? <SharedStory /> : <Dashboard />
+  return (
+    <>
+      {window.location.pathname.replace(/\/$/, '') === '/stats' ? <StatsPage /> : window.location.pathname.replace(/\/$/, '') === '/ranking' ? <RankingPage /> : new URLSearchParams(window.location.search).has('story') ? <SharedStory /> : <Dashboard />}
+      <Analytics />
+    </>
+  )
 }
 
 function Dashboard() {
