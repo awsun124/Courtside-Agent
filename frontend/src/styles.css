@@ -344,10 +344,10 @@ details > summary:hover { color: var(--accent); }
 .filter-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem 1.5rem; }
 .type-filter { display: grid; gap: .5rem; font-size: .85rem; font-weight: 600; }
 .story-filters select, .team-picker summary { padding: .65rem .75rem; color: inherit; background: transparent; border: 1px solid #b5baad; border-radius: 2px; font: inherit; }
-.team-picker { flex: 1 1 290px; }
+.team-picker { position: relative; flex: 0 1 290px; min-width: 0; }
 .team-picker summary { cursor: pointer; }
-.team-picker fieldset { margin: .75rem 0 0; border: 1px solid #b5baad; padding: 1rem; }
-.team-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .75rem; margin-top: 1rem; }
+.team-picker fieldset { position: absolute; top: calc(100% + .5rem); left: 0; z-index: 20; width: 340px; max-width: calc(100vw - 48px); max-height: min(360px, 50vh); overflow-y: auto; overscroll-behavior: contain; margin: 0; border: 1px solid #b5baad; padding: 1rem; background: var(--paper); box-shadow: 0 8px 20px #242a2718; }
+.team-options { display: grid; grid-template-columns: 1fr; gap: .75rem; margin-top: 1rem; }
 .team-options label { display: flex; align-items: center; gap: .5rem; font-size: .9rem; cursor: pointer; }
 .team-options input { accent-color: #ad4932; width: 1rem; height: 1rem; }
 .story-filters p, .filter-results { margin: .75rem 0 0; font-size: .85rem; color: #6e766e; }
@@ -369,3 +369,5 @@ details > summary:hover { color: var(--accent); }
 .bookmark-edition { color: #6e766e; font-size: .85rem; }
 .shared-story { max-width: 1000px; }
 .shared-story > h1 { margin-top: 2rem; }
+
+.team-coverage { display: block; margin-top: .15rem; color: var(--muted); font-size: .75rem; }

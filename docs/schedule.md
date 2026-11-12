@@ -49,9 +49,10 @@ enabled. Those manual tools retain their 30-minute cooldown.
 
 ## Search saved stories
 
-Keyword search runs locally over story titles and available summaries, including
-unranked candidates. All whitespace-separated words must appear somewhere in
-that combined text, ignoring case and accents. Search combines with team and
+Keyword search runs locally over story titles, available summaries, team names,
+and story-type labels, including unranked candidates. Any entered word can
+match, ignoring case, accents, and common plural endings. For example, roster
+moves finds stories labeled Roster move even without those words in the headline. Search combines with team and
 story-type filters, preserves overall ranks, and makes no additional API calls.
 It does not search full articles or related-reading links. The query is remembered
 in this browser alongside filter choices and can be cleared separately.

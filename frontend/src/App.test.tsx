@@ -145,6 +145,7 @@ describe('Court Side dashboard', () => {
     expect(screen.queryByRole('heading', { name: story.title })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Remove story type filter' }))
     expect(screen.getByRole('heading', { name: story.title })).toBeTruthy()
+    await userEvent.clear(screen.getByRole('searchbox'))
     await userEvent.type(screen.getByRole('searchbox'), 'missingword')
     expect(screen.getByText(/No saved stories match/)).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: 'Clear search' }))
@@ -168,6 +169,55 @@ describe('Court Side dashboard', () => {
     expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('doncic ankle')
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
     expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('')
+  })
+
+  it('shows team coverage and explains matches that are only unranked candidates', async () => {
+    const latest = makeLatest()
+    const candidate = { ...latest.briefing!.stories[0], id: 'warriors', title: 'Warriors game report', rank: null, teams: ['golden state warriors'] }
+    latest.briefing!.candidates.push(candidate)
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    fireEvent.click(screen.getByText('Teams · All teams'))
+    const warriors = screen.getByRole('checkbox', { name: 'Golden State Warriors' })
+    expect(within(warriors.closest('label')!).getByText('1 saved')).toBeTruthy()
+    const bulls = screen.getByRole('checkbox', { name: 'Chicago Bulls' })
+    expect(within(bulls.closest('label')!).getByText('No saved stories')).toBeTruthy()
+    await userEvent.click(warriors)
+    expect(screen.getByRole('heading', { name: candidate.title })).toBeTruthy()
+    expect(screen.getByText(/1 matching story below is unranked/)).toBeTruthy()
+  })
+
+  it('clears unread-only along with other filters', async () => {
+    serve()
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Saved NBA game report' })
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as read' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Unread only' }))
+    expect(screen.queryByRole('heading', { name: 'Saved NBA game report' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect((screen.getByRole('checkbox', { name: 'Unread only' }) as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByRole('heading', { name: 'Saved NBA game report' })).toBeTruthy()
+  })
+
+  it('finds roster moves by their category while retaining team filters', async () => {
+    const latest = makeLatest()
+    const story = latest.briefing!.stories[0]
+    story.title = 'Lakers waive Lovering, sign Cooper'
+    story.event = 'contract'
+    story.teams = ['los angeles lakers']
+    story.summary = null
+    serve(latest)
+    render(<App />)
+    await screen.findByRole('heading', { name: story.title })
+    await userEvent.type(screen.getByRole('searchbox'), 'roster moves')
+    expect(screen.getByRole('heading', { name: story.title })).toBeTruthy()
+    fireEvent.click(screen.getByText('Teams · All teams'))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Los Angeles Lakers' }))
+    expect(screen.getByRole('heading', { name: story.title })).toBeTruthy()
+    await userEvent.selectOptions(screen.getByLabelText('Story type'), 'injury')
+    expect(screen.queryByRole('heading', { name: story.title })).toBeNull()
+    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
   })
 
   it('shows the daily schedule and reloads saved news without a collection request', async () => {
